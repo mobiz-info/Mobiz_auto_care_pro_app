@@ -1,14 +1,40 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 class ApiService {
-  static const String appName = "Mobiz AutoCare Pro";
-  static const String appIconPath = "assets/icons/mobiz_logo_foreground.png";
+  static const String appName = "Mobiz Auto Care Pro";
+  static const String appIconPath = "assets/icons/mobiz_logo.png";
   // Use 10.0.2.2 for Android Emulator, or your local IP if on a real device
   // static const String baseUrl = "http://10.54.237.238:8000/api";
   static const String baseUrl = "http://68.183.94.11:78/api";
 
   static final Map<String, String> _modelToTypeMap = {};
+
+  static Map<String, dynamic> _decodeJobCardResponse(http.Response response) {
+    if (response.statusCode == 413) {
+      return {
+        'success': false,
+        'message':
+            'The Job Card upload is too large. Reduce the number or size of issue photos and try again.',
+      };
+    }
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      return {
+        'success': false,
+        'message': 'Unexpected server response (${response.statusCode}).',
+      };
+    } on FormatException {
+      return {
+        'success': false,
+        'message':
+            'The server returned an unreadable response (${response.statusCode}). Please try again or contact support.',
+      };
+    }
+  }
 
   static Future<void> ensureModelToTypeMap(String token) async {
     if (_modelToTypeMap.isNotEmpty) return;
@@ -34,14 +60,17 @@ class ApiService {
     } catch (_) {}
   }
 
-  static Map<String, dynamic> _mapVehicleTypesInResponse(Map<String, dynamic> data) {
+  static Map<String, dynamic> _mapVehicleTypesInResponse(
+    Map<String, dynamic> data,
+  ) {
     if (data['customer'] != null && data['customer']['vehicles'] != null) {
       final vehicles = data['customer']['vehicles'] as List<dynamic>;
       for (final v in vehicles) {
         if (v is Map) {
           final typeVal = v['vehicle_type']?.toString() ?? '';
           if (typeVal.isEmpty) {
-            final modelName = (v['type'] ?? v['vehicle_model_name'] ?? '').toString();
+            final modelName = (v['type'] ?? v['vehicle_model_name'] ?? '')
+                .toString();
             if (modelName.isNotEmpty) {
               v['vehicle_type'] = _modelToTypeMap[modelName] ?? '';
             }
@@ -100,7 +129,6 @@ class ApiService {
     } catch (_) {}
   }
 
-
   static Future<Map<String, dynamic>> searchCustomer(
     String query,
     String token, {
@@ -112,10 +140,10 @@ class ApiService {
     if (isVehicle) {
       url += 'vehicle_number=${Uri.encodeComponent(query)}';
     } else {
-      url += 'mobile=$query';
+      url += 'mobile=${Uri.encodeComponent(query)}';
     }
     if (branchId != null && branchId.isNotEmpty) {
-      url += '&branch_id=$branchId';
+      url += '&branch_id=${Uri.encodeComponent(branchId)}';
     }
     final response = await http.get(
       Uri.parse(url),
@@ -139,12 +167,15 @@ class ApiService {
     String token, {
     String? branchId,
   }) async {
-    String url = '$baseUrl/customer/search-list/?q=$query';
+    final queryParameters = <String, String>{'q': query};
     if (branchId != null && branchId.isNotEmpty) {
-      url += '&branch_id=$branchId';
+      queryParameters['branch_id'] = branchId;
     }
+    final uri = Uri.parse(
+      '$baseUrl/customer/search-list/',
+    ).replace(queryParameters: queryParameters);
     final response = await http.get(
-      Uri.parse(url),
+      uri,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -165,9 +196,7 @@ class ApiService {
     final cId = customerId?.toString() ?? '';
     final vId = vehicleId?.toString() ?? '';
     final response = await http.get(
-      Uri.parse(
-        '$baseUrl/invoice/services/?customer_id=$cId&vehicle_id=$vId',
-      ),
+      Uri.parse('$baseUrl/invoice/services/?customer_id=$cId&vehicle_id=$vId'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -208,7 +237,9 @@ class ApiService {
         response.statusCode == 401) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Failed to connect to the server (${response.statusCode}).');
+      throw Exception(
+        'Failed to connect to the server (${response.statusCode}).',
+      );
     }
   }
 
@@ -239,7 +270,9 @@ class ApiService {
         response.statusCode == 401) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Failed to connect to the server (${response.statusCode}).');
+      throw Exception(
+        'Failed to connect to the server (${response.statusCode}).',
+      );
     }
   }
 
@@ -425,6 +458,7 @@ class ApiService {
       throw Exception('Failed to connect to the server.');
     }
   }
+
   static Future<Map<String, dynamic>> searchVehicleList(
     String query,
     String token,
@@ -510,12 +544,13 @@ class ApiService {
       final custName = (planDetails['customer_name'] ?? '').toString();
       final vehicleNum = (planDetails['vehicle_number'] ?? '').toString();
       final serviceName = (planDetails['service_name'] ?? '').toString();
-      final nextKm = (planDetails['next_alignment_km'] ??
-              planDetails['next_oil_change_km'] ??
-              planDetails['next_km'] ??
-              planDetails['due_km'] ??
-              '')
-          .toString();
+      final nextKm =
+          (planDetails['next_alignment_km'] ??
+                  planDetails['next_oil_change_km'] ??
+                  planDetails['next_km'] ??
+                  planDetails['due_km'] ??
+                  '')
+              .toString();
 
       bodyPayload['value1'] = custName;
       bodyPayload['value2'] = vehicleNum;
@@ -566,7 +601,7 @@ class ApiService {
         'value1=${Uri.encodeComponent(value1)}&'
         'value2=${Uri.encodeComponent(value2)}&'
         'value3=${Uri.encodeComponent(value3)}&'
-        'value4=${Uri.encodeComponent(value4)}'
+        'value4=${Uri.encodeComponent(value4)}',
       );
 
       final response = await http.get(url);
@@ -586,7 +621,8 @@ class ApiService {
     final params = <String, String>{};
     if (fromDate != null) params['from_date'] = fromDate;
     if (toDate != null) params['to_date'] = toDate;
-    if (serviceId != null && serviceId != 'all') params['service_id'] = serviceId;
+    if (serviceId != null && serviceId != 'all')
+      params['service_id'] = serviceId;
     if (params.isNotEmpty) {
       url += '?' + params.entries.map((e) => '${e.key}=${e.value}').join('&');
     }
@@ -827,15 +863,19 @@ class ApiService {
 
   static Future<Map<String, dynamic>> listInvoices(
     String token, {
+    String? invoiceId,
     String? fromDate,
     String? toDate,
     String? paymentMode,
   }) async {
     String url = '$baseUrl/invoice/list/';
     final params = <String, String>{};
+    if (invoiceId != null && invoiceId.isNotEmpty)
+      params['invoice_id'] = invoiceId;
     if (fromDate != null) params['from_date'] = fromDate;
     if (toDate != null) params['to_date'] = toDate;
-    if (paymentMode != null && paymentMode.isNotEmpty) params['payment_mode'] = paymentMode;
+    if (paymentMode != null && paymentMode.isNotEmpty)
+      params['payment_mode'] = paymentMode;
     if (params.isNotEmpty) {
       url += '?' + params.entries.map((e) => '${e.key}=${e.value}').join('&');
     }
@@ -853,7 +893,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getDashboardStats(String token, {String? branchId}) async {
+  static Future<Map<String, dynamic>> getDashboardStats(
+    String token, {
+    String? branchId,
+  }) async {
     String url = '$baseUrl/dashboard/stats/';
     if (branchId != null && branchId.isNotEmpty) {
       url += '?branch_id=${Uri.encodeComponent(branchId)}';
@@ -968,7 +1011,8 @@ class ApiService {
     if (fromDate != null) params['from_date'] = fromDate;
     if (toDate != null) params['to_date'] = toDate;
     if (branchId != null && branchId.isNotEmpty) params['branch_id'] = branchId;
-    if (paymentMode != null && paymentMode.isNotEmpty) params['payment_mode'] = paymentMode;
+    if (paymentMode != null && paymentMode.isNotEmpty)
+      params['payment_mode'] = paymentMode;
     if (params.isNotEmpty) {
       url += '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
     }
@@ -1183,6 +1227,53 @@ class ApiService {
     }
   }
 
+  /// Get credit note pre-population info for an invoice
+  static Future<Map<String, dynamic>> getCreditNoteInfo(
+    String invoiceId,
+    String token,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credit-notes/info/?invoice_id=$invoiceId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403 ||
+        response.statusCode == 404 ||
+        response.statusCode == 401) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get credit note info.');
+    }
+  }
+
+  /// Create a credit note for an invoice
+  static Future<Map<String, dynamic>> createCreditNote(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credit-notes/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403 ||
+        response.statusCode == 404 ||
+        response.statusCode == 401) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to create credit note.');
+    }
+  }
+
   static Future<Map<String, dynamic>> _reportGet(
     String path,
     String token,
@@ -1221,8 +1312,14 @@ class ApiService {
     String toDate, {
     String? branchId,
     String? category,
-  }) =>
-      _reportGet('reports/jobs/', token, fromDate, toDate, branchId: branchId, category: category);
+  }) => _reportGet(
+    'reports/jobs/',
+    token,
+    fromDate,
+    toDate,
+    branchId: branchId,
+    category: category,
+  );
 
   static Future<Map<String, dynamic>> getSchemeBeneficiaryReport(
     String token,
@@ -1358,7 +1455,9 @@ class ApiService {
       if (branchId != null && branchId.isNotEmpty) 'branch_id': branchId,
       if (staffId != null && staffId.isNotEmpty) 'staff_id': staffId,
     };
-    final uri = Uri.parse('$baseUrl/reports/staff-income/').replace(queryParameters: query);
+    final uri = Uri.parse(
+      '$baseUrl/reports/staff-income/',
+    ).replace(queryParameters: query);
     final response = await http.get(
       uri,
       headers: {
@@ -1372,9 +1471,7 @@ class ApiService {
     throw Exception('Failed to load staff income report.');
   }
 
-
   static Future<Map<String, dynamic>> listComplaintTypes(String token) async {
-
     final response = await http.get(
       Uri.parse('$baseUrl/complaint-types/'),
       headers: {
@@ -1389,7 +1486,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> createComplaintType(String token, String name) async {
+  static Future<Map<String, dynamic>> createComplaintType(
+    String token,
+    String name,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/complaint-types/create/'),
       headers: {
@@ -1487,7 +1587,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getExpenseItemsByHead(String token, String headId) async {
+  static Future<Map<String, dynamic>> getExpenseItemsByHead(
+    String token,
+    String headId,
+  ) async {
     final response = await http.get(
       Uri.parse('$baseUrl/expenses/items-by-head/?expense_head_id=$headId'),
       headers: {
@@ -1518,10 +1621,15 @@ class ApiService {
       final res = jsonDecode(response.body);
       if (res is Map<String, dynamic>) return res;
     } catch (_) {}
-    throw Exception('Failed to create expense (Status: ${response.statusCode}).');
+    throw Exception(
+      'Failed to create expense (Status: ${response.statusCode}).',
+    );
   }
 
-  static Future<Map<String, dynamic>> deleteExpenseEntry(String token, String id) async {
+  static Future<Map<String, dynamic>> deleteExpenseEntry(
+    String token,
+    String id,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/expenses/delete/'),
       headers: {
@@ -1534,10 +1642,14 @@ class ApiService {
       final res = jsonDecode(response.body);
       if (res is Map<String, dynamic>) return res;
     } catch (_) {}
-    throw Exception('Failed to delete expense (Status: ${response.statusCode}).');
+    throw Exception(
+      'Failed to delete expense (Status: ${response.statusCode}).',
+    );
   }
 
-  static Future<Map<String, dynamic>> getPurchaseExpensesList(String token) async {
+  static Future<Map<String, dynamic>> getPurchaseExpensesList(
+    String token,
+  ) async {
     final response = await http.get(
       Uri.parse('$baseUrl/purchase-expenses/list/'),
       headers: {
@@ -1563,10 +1675,7 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'id': id,
-        'additional_paid': additionalPaid,
-      }),
+      body: jsonEncode({'id': id, 'additional_paid': additionalPaid}),
     );
     if (response.statusCode == 200 || response.statusCode == 400) {
       return jsonDecode(response.body);
@@ -1707,6 +1816,70 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> adjustStock({
+    required String stockId,
+    required String transactionType, // 'in' or 'out'
+    required double quantity,
+    String reason = 'other',
+    String notes = '',
+    double unitCost = 0.0,
+    String? referenceNumber,
+    String? branchId,
+    required String token,
+  }) async {
+    final bodyMap = <String, dynamic>{
+      'stock_id': stockId,
+      'transaction_type': transactionType,
+      'quantity': quantity,
+      'reason': reason,
+      'notes': notes,
+      'unit_cost': unitCost,
+      if (referenceNumber != null && referenceNumber.isNotEmpty)
+        'reference_number': referenceNumber,
+    };
+    if (branchId != null && branchId.isNotEmpty) {
+      bodyMap['branch_id'] = branchId;
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/stock/adjust/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(bodyMap),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    final err = jsonDecode(response.body);
+    throw Exception(err['message'] ?? 'Failed to adjust stock.');
+  }
+
+  static Future<Map<String, dynamic>> getStockTransactions({
+    String? stockId,
+    String? transactionType,
+    int limit = 50,
+    required String token,
+  }) async {
+    String url = '$baseUrl/stock/transactions/?limit=$limit';
+    if (stockId != null && stockId.isNotEmpty) {
+      url += '&stock_id=$stockId';
+    }
+    if (transactionType != null && transactionType.isNotEmpty) {
+      url += '&transaction_type=$transactionType';
+    }
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to load stock transactions.');
+  }
 
   static Future<Map<String, dynamic>> getPurchaseRequests(String token) async {
     final response = await http.get(
@@ -1773,7 +1946,9 @@ class ApiService {
       },
       body: jsonEncode(data),
     );
-    if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 400) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 201 ||
+        response.statusCode == 400) {
       return jsonDecode(response.body);
     } else {
       throw Exception('Failed to create stock item.');
@@ -1884,7 +2059,8 @@ class ApiService {
       },
       body: jsonEncode({
         'name': name,
-        if (serviceTypeId != null && serviceTypeId.isNotEmpty) 'service_type_id': serviceTypeId,
+        if (serviceTypeId != null && serviceTypeId.isNotEmpty)
+          'service_type_id': serviceTypeId,
       }),
     );
     if (response.statusCode == 200 || response.statusCode == 400) {
@@ -1905,7 +2081,9 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     } else {
       throw Exception('Failed to delete extra item.');
@@ -1927,7 +2105,6 @@ class ApiService {
     }
   }
 
-
   static Future<Map<String, dynamic>> getExpenseHeadWiseReport(
     String token,
     String fromDate,
@@ -1938,7 +2115,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) {
       params['branch_id'] = branchId;
     }
-    final url = Uri.parse('$baseUrl/reports/expense-head-wise/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/expense-head-wise/',
+    ).replace(queryParameters: params);
     print('DEBUG getExpenseHeadWiseReport URL: $url');
     final response = await http.get(
       url,
@@ -1952,7 +2131,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to load expense head report (status: ${response.statusCode}, body: ${response.body}).');
+    throw Exception(
+      'Failed to load expense head report (status: ${response.statusCode}, body: ${response.body}).',
+    );
   }
 
   static Future<Map<String, dynamic>> getExpenseHeadDetailReport(
@@ -1970,7 +2151,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) {
       params['branch_id'] = branchId;
     }
-    final url = Uri.parse('$baseUrl/reports/expense-head-wise/detail/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/expense-head-wise/detail/',
+    ).replace(queryParameters: params);
     print('DEBUG getExpenseHeadDetailReport URL: $url');
     final response = await http.get(
       url,
@@ -1984,7 +2167,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to load expense head detail report (status: ${response.statusCode}, body: ${response.body}).');
+    throw Exception(
+      'Failed to load expense head detail report (status: ${response.statusCode}, body: ${response.body}).',
+    );
   }
 
   static Future<Map<String, dynamic>> getAllExpenses(
@@ -1999,7 +2184,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) params['branch_id'] = branchId;
     if (fromDate != null && fromDate.isNotEmpty) params['from_date'] = fromDate;
     if (toDate != null && toDate.isNotEmpty) params['to_date'] = toDate;
-    final url = Uri.parse('$baseUrl/expenses/list/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/expenses/list/',
+    ).replace(queryParameters: params);
     final response = await http.get(
       url,
       headers: {
@@ -2023,7 +2210,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) {
       params['branch_id'] = branchId;
     }
-    final url = Uri.parse('$baseUrl/reports/leave/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/leave/',
+    ).replace(queryParameters: params);
     print('DEBUG getLeaveReport URL: $url');
     final response = await http.get(
       url,
@@ -2037,7 +2226,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to load leave report (status: ${response.statusCode}, body: ${response.body}).');
+    throw Exception(
+      'Failed to load leave report (status: ${response.statusCode}, body: ${response.body}).',
+    );
   }
 
   static Future<Map<String, dynamic>> getServiceTypeDetailReport(
@@ -2063,7 +2254,9 @@ class ApiService {
     if (vehicleTypeModelId != null && vehicleTypeModelId.isNotEmpty) {
       params['vehicle_type_model_id'] = vehicleTypeModelId;
     }
-    final url = Uri.parse('$baseUrl/reports/service-type/detail/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/service-type/detail/',
+    ).replace(queryParameters: params);
     final response = await http.get(
       url,
       headers: {
@@ -2092,7 +2285,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) {
       params['branch_id'] = branchId;
     }
-    final url = Uri.parse('$baseUrl/reports/service-type/vehicle-breakdown/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/service-type/vehicle-breakdown/',
+    ).replace(queryParameters: params);
     final response = await http.get(
       url,
       headers: {
@@ -2119,7 +2314,9 @@ class ApiService {
     if (branchId != null && branchId.isNotEmpty) {
       params['branch_id'] = branchId;
     }
-    final url = Uri.parse('$baseUrl/reports/profit-loss/').replace(queryParameters: params);
+    final url = Uri.parse(
+      '$baseUrl/reports/profit-loss/',
+    ).replace(queryParameters: params);
     final response = await http.get(
       url,
       headers: {
@@ -2168,7 +2365,9 @@ class ApiService {
       },
       body: jsonEncode(data),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to update booking settings.');
@@ -2209,7 +2408,9 @@ class ApiService {
       },
       body: jsonEncode(data),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to create holiday.');
@@ -2227,7 +2428,10 @@ class ApiService {
       },
       body: jsonEncode({'id': id}),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 404 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to delete holiday.');
@@ -2268,7 +2472,9 @@ class ApiService {
       },
       body: jsonEncode(data),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to create weekly off.');
@@ -2286,7 +2492,10 @@ class ApiService {
       },
       body: jsonEncode({'id': id}),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 404 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to delete weekly off.');
@@ -2327,7 +2536,9 @@ class ApiService {
       },
       body: jsonEncode(data),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to create booking pause.');
@@ -2345,7 +2556,10 @@ class ApiService {
       },
       body: jsonEncode({'id': id}),
     );
-    if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404 || response.statusCode == 403) {
+    if (response.statusCode == 200 ||
+        response.statusCode == 400 ||
+        response.statusCode == 404 ||
+        response.statusCode == 403) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to delete booking pause.');
@@ -2381,7 +2595,9 @@ class ApiService {
     throw Exception('Failed to load oil filters.');
   }
 
-  static Future<Map<String, dynamic>> getInsuranceCompanies(String token) async {
+  static Future<Map<String, dynamic>> getInsuranceCompanies(
+    String token,
+  ) async {
     final response = await http.get(
       Uri.parse('$baseUrl/insurance-companies/'),
       headers: {
@@ -2409,7 +2625,10 @@ class ApiService {
     throw Exception('Failed to load tyre brands.');
   }
 
-  static Future<Map<String, dynamic>> getOilStock(String token, {String? branchId}) async {
+  static Future<Map<String, dynamic>> getOilStock(
+    String token, {
+    String? branchId,
+  }) async {
     var url = '$baseUrl/oil-stock/';
     if (branchId != null && branchId.isNotEmpty) {
       url += '?branch_id=$branchId';
@@ -2467,10 +2686,7 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'oil_filter_id': oilFilterId,
-        'quantity': quantity,
-      }),
+      body: jsonEncode({'oil_filter_id': oilFilterId, 'quantity': quantity}),
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -2480,10 +2696,20 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getVehicleServiceHistory(
     String vehicleId,
-    String token,
-  ) async {
+    String token, {
+    String? fromDate,
+    String? toDate,
+  }) async {
+    String url = '$baseUrl/vehicle-service-history/$vehicleId/';
+    final params = <String>[];
+    if (fromDate != null && fromDate.isNotEmpty)
+      params.add('from_date=$fromDate');
+    if (toDate != null && toDate.isNotEmpty) params.add('to_date=$toDate');
+    if (params.isNotEmpty) {
+      url += '?${params.join('&')}';
+    }
     final response = await http.get(
-      Uri.parse('$baseUrl/vehicle-service-history/$vehicleId/'),
+      Uri.parse(url),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -2510,11 +2736,16 @@ class ApiService {
     if (vehicleTypeId != null && vehicleTypeId.isNotEmpty) {
       params['vehicle_type_id'] = vehicleTypeId;
     }
-    final url = Uri.parse('$baseUrl/oil-price/').replace(queryParameters: params);
-    final response = await http.get(url, headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    });
+    final url = Uri.parse(
+      '$baseUrl/oil-price/',
+    ).replace(queryParameters: params);
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
@@ -2548,10 +2779,7 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'tyre_id': tyreId,
-        'stock_qty_add': stockQtyAdd,
-      }),
+      body: jsonEncode({'tyre_id': tyreId, 'stock_qty_add': stockQtyAdd}),
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -2575,13 +2803,27 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 400) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to create quotation (Status: ${response.statusCode}).');
+    throw Exception(
+      'Failed to create quotation (Status: ${response.statusCode}).',
+    );
   }
 
   /// Get list of quotations.
-  static Future<Map<String, dynamic>> getQuotationList(String token) async {
+  static Future<Map<String, dynamic>> getQuotationList(
+    String token, {
+    String? fromDate,
+    String? toDate,
+  }) async {
+    String url = '$baseUrl/quotation/list/';
+    final params = <String>[];
+    if (fromDate != null && fromDate.isNotEmpty)
+      params.add('from_date=$fromDate');
+    if (toDate != null && toDate.isNotEmpty) params.add('to_date=$toDate');
+    if (params.isNotEmpty) {
+      url += '?${params.join('&')}';
+    }
     final response = await http.get(
-      Uri.parse('$baseUrl/quotation/list/'),
+      Uri.parse(url),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -2594,7 +2836,10 @@ class ApiService {
   }
 
   /// Get quotation details by ID.
-  static Future<Map<String, dynamic>> getQuotationDetail(String id, String token) async {
+  static Future<Map<String, dynamic>> getQuotationDetail(
+    String id,
+    String token,
+  ) async {
     final response = await http.get(
       Uri.parse('$baseUrl/quotation/detail/$id/'),
       headers: {
@@ -2625,7 +2870,374 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 400) {
       return jsonDecode(response.body);
     }
-    throw Exception('Failed to update quotation (Status: ${response.statusCode}).');
+    throw Exception(
+      'Failed to update quotation (Status: ${response.statusCode}).',
+    );
+  }
+
+  static Future<Map<String, dynamic>> acceptQuotation(
+    String quotationId,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/quotation/$quotationId/accept/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> convertQuotationToJobCard(
+    String quotationId,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-cards/from-quotation/$quotationId/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> listJobLeads(
+    String token, {
+    String? status,
+    bool unconverted = false,
+    String? search,
+  }) async {
+    final query = <String, String>{};
+    if (status != null && status.isNotEmpty) query['status'] = status;
+    if (unconverted) query['unconverted'] = 'true';
+    if (search != null && search.trim().isNotEmpty)
+      query['search'] = search.trim();
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-leads/').replace(queryParameters: query),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createJobLead(
+    String token,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-leads/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getJobLeadFormData(
+    String token, {
+    String? branchId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/job-leads/form-data/').replace(
+      queryParameters: branchId == null || branchId.isEmpty
+          ? null
+          : {'branch_id': branchId},
+    );
+    final response = await http.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getJobLeadHistory(
+    String token,
+    String id,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-leads/$id/history/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> updateJobLead(
+    String token,
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-leads/$id/update/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> deleteJobLead(
+    String token,
+    String id,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-leads/$id/delete/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> deleteJobQuotation(
+    String id,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-quotations/$id/delete/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createJobLeadFollowUp(
+    String token,
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-leads/$id/follow-ups/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createJobQuotation(
+    Map<String, dynamic> data,
+    String token, {
+    List<List<XFile>> issuePhotos = const [],
+  }) async {
+    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/job-quotations/create/'),
+      )..headers['Authorization'] = 'Bearer $token';
+      request.fields['payload'] = jsonEncode(data);
+      for (var issueIndex = 0; issueIndex < issuePhotos.length; issueIndex++) {
+        for (final photo in issuePhotos[issueIndex]) {
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'issue_${issueIndex}_photos',
+              await photo.readAsBytes(),
+              filename: photo.name,
+            ),
+          );
+        }
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return jsonDecode(response.body);
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-quotations/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+
+  static Future<Map<String, dynamic>> getOilBrands(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/oil-brands/'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createOilBrand(String name, String token) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/oil-brands/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'name': name}),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getOilGrades(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/oil-grades/'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createOilGrade(String name, String token) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/oil-grades/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'name': name}),
+    );
+    return jsonDecode(response.body);
+  }
+  static Future<Map<String, dynamic>> getJobCardIssueOptions(
+    String token,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-card-issues/options/'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createJobCardIssue(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-card-issues/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> createJobCardActivityOption(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-card-activities/create/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> updateJobQuotation(
+    String id,
+    Map<String, dynamic> data,
+    String token, {
+    List<List<XFile>> issuePhotos = const [],
+  }) async {
+    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/job-quotations/$id/update/'),
+      )..headers['Authorization'] = 'Bearer $token';
+      request.fields['payload'] = jsonEncode(data);
+      for (var issueIndex = 0; issueIndex < issuePhotos.length; issueIndex++) {
+        for (final photo in issuePhotos[issueIndex]) {
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'issue_${issueIndex}_photos',
+              await photo.readAsBytes(),
+              filename: photo.name,
+            ),
+          );
+        }
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return jsonDecode(response.body);
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-quotations/$id/update/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getJobQuotationList(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-quotations/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getJobQuotationDetail(
+    String id,
+    String token,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-quotations/$id/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> acceptJobQuotation(
+    String id,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-quotations/$id/accept/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> convertJobQuotationToJobCard(
+    String id,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-cards/from-job-quotation/$id/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
   }
 
   // --- Senior ERP Purchase & Supplier Payables ---
@@ -2658,7 +3270,10 @@ class ApiService {
     throw Exception('Failed to load supplier payables.');
   }
 
-  static Future<Map<String, dynamic>> createSupplierPayment(Map<String, dynamic> data, String token) async {
+  static Future<Map<String, dynamic>> createSupplierPayment(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/erp/supplier-payment/create/'),
       headers: {
@@ -2673,7 +3288,10 @@ class ApiService {
     throw Exception('Failed to record supplier payment.');
   }
 
-  static Future<Map<String, dynamic>> createPurchaseInvoice(Map<String, dynamic> data, String token) async {
+  static Future<Map<String, dynamic>> createPurchaseInvoice(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/erp/purchase-invoice/create/'),
       headers: {
@@ -2707,13 +3325,16 @@ class ApiService {
   static Future<Map<String, dynamic>> listLeads(
     String token, {
     String? search,
+    String? status,
   }) async {
-    String url = '$baseUrl/leads/list/';
-    if (search != null && search.isNotEmpty) {
-      url += '?q=${Uri.encodeComponent(search)}';
-    }
+    final params = <String, String>{};
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    if (status != null && status.isNotEmpty) params['status'] = status;
+    final uri = Uri.parse(
+      '$baseUrl/leads/list/',
+    ).replace(queryParameters: params.isEmpty ? null : params);
     final response = await http.get(
-      Uri.parse(url),
+      uri,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -2742,6 +3363,22 @@ class ApiService {
       if (decoded is Map<String, dynamic>) return decoded;
     } catch (_) {}
     throw Exception('Failed to create lead (Status ${response.statusCode}).');
+  }
+
+  static Future<Map<String, dynamic>> createLeadFollowUp(
+    String token,
+    String leadId,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/leads/$leadId/follow-ups/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
   }
 
   static Future<Map<String, dynamic>> editLead(
@@ -2832,9 +3469,7 @@ class ApiService {
     throw Exception('Failed to search customers.');
   }
 
-  static Future<Map<String, dynamic>> insuranceServices(
-    String token,
-  ) async {
+  static Future<Map<String, dynamic>> insuranceServices(String token) async {
     final response = await http.get(
       Uri.parse('$baseUrl/insurance/services/'),
       headers: {
@@ -2860,7 +3495,9 @@ class ApiService {
     if (showAll) params['show_all'] = 'true';
     if (search != null && search.isNotEmpty) params['search'] = search;
     if (params.isNotEmpty) {
-      final queryStr = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+      final queryStr = params.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
       url += '?$queryStr';
     }
     final response = await http.get(
@@ -2874,5 +3511,293 @@ class ApiService {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to load insurance reminders.');
+  }
+
+  // ─── Job Card APIs ────────────────────────────────────────────────────────
+  static Future<Map<String, dynamic>> getJobCards(
+    String token, {
+    String tab = 'all',
+    String search = '',
+  }) async {
+    final Map<String, String> params = {'tab': tab};
+    if (search.isNotEmpty) {
+      params['search'] = search;
+    }
+    final url = Uri.parse(
+      '$baseUrl/job-cards/',
+    ).replace(queryParameters: params);
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false, 'message': 'Failed to load job cards'};
+  }
+
+  static Future<Map<String, dynamic>> getJobCardDetail(
+    String id,
+    String token,
+  ) async {
+    final url = Uri.parse('$baseUrl/job-cards/$id/');
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false, 'message': 'Failed to load job card details'};
+  }
+
+  static Future<Map<String, dynamic>> getJobCardInvoice(
+    String jobCardId,
+    String token,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/job-cards/$jobCardId/invoice/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> createJobCardInvoice(
+    String jobCardId,
+    String token, {
+    required double amountCollected,
+    required String paymentMode,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-cards/$jobCardId/invoice/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'amount_collected': amountCollected,
+        'payment_mode': paymentMode,
+      }),
+    );
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> createJobCard(
+    Map<String, dynamic> data,
+    String token, {
+    List<List<XFile>> issuePhotos = const [],
+  }) async {
+    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+      final photoBytes = <(XFile, List<int>)>[];
+      var totalPhotoBytes = 0;
+      for (final photos in issuePhotos) {
+        for (final photo in photos) {
+          final bytes = await photo.readAsBytes();
+          totalPhotoBytes += bytes.length;
+          photoBytes.add((photo, bytes));
+        }
+      }
+      if (totalPhotoBytes > 750 * 1024) {
+        return {
+          'success': false,
+          'message':
+              'Issue photos are still too large to upload together. Remove some photos and try again.',
+        };
+      }
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/job-cards/create/'),
+      )..headers['Authorization'] = 'Bearer $token';
+      request.fields['payload'] = jsonEncode(data);
+      var photoIndex = 0;
+      for (var issueIndex = 0; issueIndex < issuePhotos.length; issueIndex++) {
+        for (final photo in issuePhotos[issueIndex]) {
+          final bytes = photoBytes[photoIndex++].$2;
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'issue_${issueIndex}_photos',
+              bytes,
+              filename: photo.name,
+            ),
+          );
+        }
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return _decodeJobCardResponse(response);
+    }
+    final url = Uri.parse('$baseUrl/job-cards/create/');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> updateJobCard(
+    String id,
+    Map<String, dynamic> data,
+    String token, {
+    List<List<XFile>> issuePhotos = const [],
+  }) async {
+    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+      final photoBytes = <(XFile, List<int>)>[];
+      var totalPhotoBytes = 0;
+      for (final photos in issuePhotos) {
+        for (final photo in photos) {
+          final bytes = await photo.readAsBytes();
+          totalPhotoBytes += bytes.length;
+          photoBytes.add((photo, bytes));
+        }
+      }
+      if (totalPhotoBytes > 750 * 1024) {
+        return {
+          'success': false,
+          'message':
+              'Issue photos are still too large to upload together. Remove some photos and try again.',
+        };
+      }
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/job-cards/$id/update/'),
+      )..headers['Authorization'] = 'Bearer $token';
+      request.fields['payload'] = jsonEncode(data);
+      var photoIndex = 0;
+      for (var issueIndex = 0; issueIndex < issuePhotos.length; issueIndex++) {
+        for (final photo in issuePhotos[issueIndex]) {
+          final bytes = photoBytes[photoIndex++].$2;
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'issue_${issueIndex}_photos',
+              bytes,
+              filename: photo.name,
+            ),
+          );
+        }
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return _decodeJobCardResponse(response);
+    }
+    final url = Uri.parse('$baseUrl/job-cards/$id/update/');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteJobCard(
+    String id,
+    String token,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/job-cards/$id/delete/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> updateJobCardStatus(
+    String id,
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final url = Uri.parse('$baseUrl/job-cards/$id/status/');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> searchJobCardAccessories(
+    String query,
+    String token,
+  ) async {
+    final url = Uri.parse(
+      '$baseUrl/job-cards/accessories-search/',
+    ).replace(queryParameters: {'q': query});
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false, 'results': []};
+  }
+
+  static Future<Map<String, dynamic>> getJobCardMetadata(String token) async {
+    final url = Uri.parse('$baseUrl/job-cards/metadata/');
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false};
+  }
+
+  static Future<Map<String, dynamic>> addJobCardVehicle(
+    Map<String, dynamic> data,
+    String token,
+  ) async {
+    final url = Uri.parse('$baseUrl/job-cards/vehicle/add/');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getInspectionChecklist(String token) async {
+    final url = Uri.parse('$baseUrl/job-cards/inspection-checklist/');
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false, 'categories': []};
   }
 }
