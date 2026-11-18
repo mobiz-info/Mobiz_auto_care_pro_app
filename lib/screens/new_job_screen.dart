@@ -12,8 +12,10 @@ import '../providers/auth_provider.dart';
 import '../providers/customer_provider.dart';
 import '../services/api_service.dart';
 import 'add_customer_screen.dart';
+import 'add_vehicle_screen.dart';
 import 'invoice_create_screen.dart';
 import 'vehicle_service_history_screen.dart';
+import 'quotation_create_screen.dart';
 
 class NewJobScreen extends StatelessWidget {
   NewJobScreen({super.key});
@@ -124,11 +126,12 @@ class NewJobScreen extends StatelessWidget {
 
   void _selectCustomerFromVehicleSuggestion(BuildContext context, Map<String, dynamic> suggestion) {
     _customerSuggestionsNotifier.value = [];
-    _mobileController.text = suggestion['vehicle_number'] ?? '';
-    _searchCustomer(context, unfocus: true);
+    final vNumber = (suggestion['vehicle_number'] ?? '').toString().trim();
+    _mobileController.text = vNumber;
+    _searchCustomer(context, unfocus: true, targetVehicleNumber: vNumber);
   }
 
-  void _searchCustomer(BuildContext context, {bool unfocus = true}) {
+  Future<void> _searchCustomer(BuildContext context, {bool unfocus = true, String? targetVehicleNumber}) async {
     if (unfocus) {
       FocusScope.of(context).unfocus();
     }
@@ -136,16 +139,41 @@ class NewJobScreen extends StatelessWidget {
     if (token != null) {
       final queryText = _mobileController.text.trim();
       if (queryText.isNotEmpty) {
+        final customerProvider = context.read<CustomerProvider>();
         if (_searchTypeNotifier.value == 'vehicle') {
-          context.read<CustomerProvider>().searchCustomer(
+          await customerProvider.searchCustomer(
             queryText,
             token,
             branchId: _selectedBranchIdNotifier.value,
             isVehicle: true,
           );
+          if (!context.mounted) return;
+          if (customerProvider.customerData != null) {
+            final data = customerProvider.customerData!;
+            final vehicles = (data['vehicles'] as List<dynamic>? ?? []);
+            final target = (targetVehicleNumber ?? queryText).replaceAll(' ', '').replaceAll('-', '').toLowerCase();
+            final matchedVehicle = vehicles.firstWhere(
+              (v) {
+                final no = (v['no'] ?? '').toString().replaceAll(' ', '').replaceAll('-', '').toLowerCase();
+                return no == target;
+              },
+              orElse: () => vehicles.isNotEmpty ? vehicles.first : null,
+            );
+            if (matchedVehicle != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => InvoiceCreateScreen(
+                    customer: data,
+                    vehicle: matchedVehicle,
+                  ),
+                ),
+              );
+            }
+          }
         } else {
           final formattedMobile = CountryConfig.formatPhoneWithCountryCode(queryText, _selectedCountryCodeNotifier.value);
-          context.read<CustomerProvider>().searchCustomer(
+          await customerProvider.searchCustomer(
             formattedMobile,
             token,
             branchId: _selectedBranchIdNotifier.value,
@@ -319,6 +347,7 @@ class NewJobScreen extends StatelessWidget {
                               controller: _mobileController,
                               textCapitalization: TextCapitalization.characters,
                               style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                              onSubmitted: (_) => _searchCustomer(context, unfocus: true),
                               decoration: InputDecoration(
                                 hintText: context.tr('Enter Vehicle Number'),
                                 filled: true,
@@ -675,25 +704,51 @@ class NewJobScreen extends StatelessWidget {
                                               ],
                                             ),
                                           ),
-                                          ElevatedButton.icon(
-                                            onPressed: () => _navigateToVehicleHistory(context, v),
-                                            icon: Icon(Icons.history, size: 14),
-                                            label: Text(
-                                              context.tr('History'),
-                                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp),
-                                            ),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Color(0xFF000080).withValues(alpha: 0.08),
-                                              foregroundColor: Color(0xFF000080),
-                                              elevation: 0,
-                                              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              minimumSize: Size.zero,
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(8),
-                                                side: const BorderSide(color: Color(0xFF000080), width: 1),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              ElevatedButton.icon(
+                                                onPressed: () => _navigateToQuotationCreate(context, data, v),
+                                                icon: const Icon(Icons.request_quote_outlined, size: 14),
+                                                label: Text(
+                                                  context.tr('Quotation'),
+                                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp),
+                                                ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(0xFF000080).withValues(alpha: 0.08),
+                                                  foregroundColor: const Color(0xFF000080),
+                                                  elevation: 0,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    side: const BorderSide(color: Color(0xFF000080), width: 1),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+                                              const SizedBox(width: 8),
+                                              ElevatedButton.icon(
+                                                onPressed: () => _navigateToVehicleHistory(context, v),
+                                                icon: const Icon(Icons.history, size: 14),
+                                                label: Text(
+                                                  context.tr('History'),
+                                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp),
+                                                ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(0xFF000080).withValues(alpha: 0.08),
+                                                  foregroundColor: const Color(0xFF000080),
+                                                  elevation: 0,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    side: const BorderSide(color: Color(0xFF000080), width: 1),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
@@ -878,11 +933,13 @@ class NewJobScreen extends StatelessWidget {
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => _AddVehicleDialog(
-        customerData: customerData,
-        token: token,
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddVehicleScreen(
+          customerData: customerData,
+          token: token,
+        ),
       ),
     );
 
@@ -898,6 +955,18 @@ class NewJobScreen extends StatelessWidget {
         token,
       );
     }
+  }
+
+  void _navigateToQuotationCreate(BuildContext context, Map<String, dynamic> customer, Map<String, dynamic> vehicle) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QuotationCreateScreen(
+          customer: customer,
+          vehicle: vehicle,
+        ),
+      ),
+    );
   }
 
   void _navigateToVehicleHistory(BuildContext context, Map<String, dynamic> vehicle) {
@@ -1055,711 +1124,5 @@ class NewJobScreen extends StatelessWidget {
         ),
       );
     }
-  }
-}
-
-class _AddVehicleDialog extends StatelessWidget {
-  final Map<String, dynamic> customerData;
-  final String token;
-
-  _AddVehicleDialog({
-    required this.customerData,
-    required this.token,
-  });
-
-  final ValueNotifier<bool> _isLoadingNotifier = ValueNotifier(true);
-  final ValueNotifier<bool> _isSavingNotifier = ValueNotifier(false);
-  final ValueNotifier<String> _errorMessageNotifier = ValueNotifier('');
-
-  final ValueNotifier<Map<String, dynamic>?> _fullCustomerDataNotifier = ValueNotifier(null);
-
-  final ValueNotifier<List<dynamic>> _vehicleTypesNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _vehicleTypeModelsNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _makesNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _brandModelsNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _colorsNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _emissionStandardsNotifier = ValueNotifier([]);
-
-  final ValueNotifier<Map<String, dynamic>?> _selectedTypeNotifier = ValueNotifier(null);
-  final ValueNotifier<Map<String, dynamic>?> _selectedSegmentNotifier = ValueNotifier(null);
-  final ValueNotifier<Map<String, dynamic>?> _selectedMakeNotifier = ValueNotifier(null);
-  final ValueNotifier<Map<String, dynamic>?> _selectedBrandNotifier = ValueNotifier(null);
-  final ValueNotifier<Map<String, dynamic>?> _selectedColorNotifier = ValueNotifier(null);
-  final ValueNotifier<Map<String, dynamic>?> _selectedEmissionNotifier = ValueNotifier(null);
-  final ValueNotifier<String> _selectedWheelTypeNotifier = ValueNotifier('normal_wheel');
-
-  final TextEditingController _numberController = TextEditingController();
-
-  Future<void> _loadData() async {
-    try {
-      final results = await Future.wait([
-        ApiService.getCustomer(customerData['id'], token),
-        ApiService.getFormData(token),
-      ]);
-
-      final customerRes = results[0];
-      final formDataRes = results[1];
-
-      if (customerRes['success'] == true && formDataRes['success'] == true) {
-        final vehicleTypes = formDataRes['vehicle_types'] as List<dynamic>? ?? [];
-        _vehicleTypesNotifier.value = vehicleTypes;
-        _vehicleTypeModelsNotifier.value = formDataRes['vehicle_type_models'] as List<dynamic>?
-            ?? formDataRes['vehicle_models'] as List<dynamic>? ?? [];
-        _makesNotifier.value = formDataRes['makes'] as List<dynamic>? ?? [];
-        _brandModelsNotifier.value = formDataRes['brand_models'] as List<dynamic>? ?? [];
-        _colorsNotifier.value = formDataRes['colors'] as List<dynamic>? ?? [];
-        _emissionStandardsNotifier.value = formDataRes['emission_standards'] as List<dynamic>? ?? [];
-
-        _fullCustomerDataNotifier.value = customerRes['customer'];
-        if (vehicleTypes.isNotEmpty) {
-          _selectedTypeNotifier.value = vehicleTypes.first;
-        }
-        _isLoadingNotifier.value = false;
-      } else {
-        _errorMessageNotifier.value = 'Failed to load details or options';
-        _isLoadingNotifier.value = false;
-      }
-    } catch (e) {
-      _errorMessageNotifier.value = e.toString();
-      _isLoadingNotifier.value = false;
-    }
-  }
-
-  List<dynamic> _segmentsForType(String? vehicleTypeId) {
-    if (vehicleTypeId == null) return [];
-    return _vehicleTypeModelsNotifier.value.where((m) => m['vehicle_type_id'] == vehicleTypeId).toList();
-  }
-
-  List<dynamic> _makesForTypeAndSegment(String? vehicleTypeId, String? segmentId) {
-    Iterable<dynamic> list = _brandModelsNotifier.value;
-    if (segmentId != null && segmentId.isNotEmpty) {
-      list = list.where((b) => b['vehicle_type_model_id']?.toString() == segmentId.toString());
-    } else if (vehicleTypeId != null && vehicleTypeId.isNotEmpty) {
-      final validSegmentIds = _vehicleTypeModelsNotifier.value
-          .where((s) => s['vehicle_type_id']?.toString() == vehicleTypeId.toString())
-          .map((s) => s['id']?.toString())
-          .toSet();
-      list = list.where((b) => validSegmentIds.contains(b['vehicle_type_model_id']?.toString()));
-    } else {
-      return _makesNotifier.value;
-    }
-    final makeIds = list
-        .map((b) => b['make_id']?.toString())
-        .where((id) => id != null && id.isNotEmpty)
-        .toSet();
-    return _makesNotifier.value.where((m) => makeIds.contains(m['id']?.toString())).toList();
-  }
-
-  List<dynamic> _brandModelsForSegmentAndMake(String? segmentId, String? makeId) {
-    Iterable<dynamic> list = _brandModelsNotifier.value;
-    if (segmentId != null && segmentId.isNotEmpty) {
-      list = list.where((b) => b['vehicle_type_model_id']?.toString() == segmentId);
-    }
-    if (makeId != null && makeId.isNotEmpty) {
-      list = list.where((b) => b['make_id']?.toString() == makeId);
-    }
-    return list.toList();
-  }
-
-  Future<void> _save(BuildContext context) async {
-    final number = _numberController.text.trim().toUpperCase();
-    if (number.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('Please enter vehicle number'))),
-      );
-      return;
-    }
-    if (_selectedSegmentNotifier.value == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('Please select a vehicle type and segment'))),
-      );
-      return;
-    }
-
-    _isSavingNotifier.value = true;
-
-    try {
-      final vehicleData = <String, dynamic>{
-        'vehicle_number': number,
-        'vehicle_model_id': _selectedSegmentNotifier.value!['id'],
-        'wheel_type': _selectedWheelTypeNotifier.value,
-      };
-      if (_selectedMakeNotifier.value != null) vehicleData['make_id'] = _selectedMakeNotifier.value!['id'];
-      if (_selectedBrandNotifier.value != null) vehicleData['brand_model_id'] = _selectedBrandNotifier.value!['id'];
-      if (_selectedColorNotifier.value != null) vehicleData['color_id'] = _selectedColorNotifier.value!['id'];
-      if (_selectedEmissionNotifier.value != null) vehicleData['emission_standard_id'] = _selectedEmissionNotifier.value!['id'];
-
-      final response = await ApiService.editCustomer({
-        'customer_id': _fullCustomerDataNotifier.value!['id'],
-        'name': _fullCustomerDataNotifier.value!['name'],
-        'phone': _fullCustomerDataNotifier.value!['phone'],
-        'whatsapp_number': _fullCustomerDataNotifier.value!['whatsapp_number'] ?? '',
-        'email': _fullCustomerDataNotifier.value!['email'] ?? '',
-        'address': _fullCustomerDataNotifier.value!['address'] ?? '',
-        'customer_type_id': _fullCustomerDataNotifier.value!['customer_type_id'],
-        'new_vehicles': [vehicleData],
-      }, token);
-
-      if (response['success'] == true) {
-        if (context.mounted) {
-          Navigator.pop(context, true);
-        }
-      } else {
-        _errorMessageNotifier.value = response['message'] ?? 'Failed to add vehicle';
-        _isSavingNotifier.value = false;
-      }
-    } catch (e) {
-      _errorMessageNotifier.value = e.toString();
-      _isSavingNotifier.value = false;
-    }
-  }
-
-  Widget _buildSearchableDropdown<T>(
-    BuildContext context, {
-    required String label,
-    required String title,
-    required T? value,
-    required List<T> items,
-    required String Function(T) labelBuilder,
-    required void Function(T?)? onChanged,
-    String? hint,
-  }) {
-    String displayLabel = hint ?? context.tr('Select $title...');
-    bool hasValue = false;
-    if (value != null && items.isNotEmpty) {
-      if (value is Map && value.containsKey('id')) {
-        final valId = value['id']?.toString();
-        for (final item in items) {
-          if (item is Map && item['id']?.toString() == valId) {
-            displayLabel = labelBuilder(item);
-            hasValue = true;
-            break;
-          }
-        }
-      } else {
-        displayLabel = labelBuilder(value);
-        hasValue = true;
-      }
-    } else if (value != null) {
-      displayLabel = labelBuilder(value);
-      hasValue = true;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: (items.isEmpty || onChanged == null)
-              ? null
-              : () => _showSearchableModal<T>(context, title, items, labelBuilder, onChanged),
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    displayLabel,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: hasValue ? Colors.black87 : Colors.grey.shade500,
-                      fontWeight: hasValue ? FontWeight.w500 : FontWeight.normal,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(Icons.search, size: 18, color: Colors.grey.shade500),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showSearchableModal<T>(
-    BuildContext context,
-    String title,
-    List<T> items,
-    String Function(T) labelBuilder,
-    void Function(T?) onChanged,
-  ) {
-    final searchNotifier = ValueNotifier<String>('');
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.7,
-        padding: EdgeInsets.only(
-          top: 20, left: 20, right: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(context.tr('Select $title'), style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.bold, color: const Color(0xFF000080))),
-                IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: context.tr('Search $title...'),
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onChanged: (v) => searchNotifier.value = v.toLowerCase().trim(),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ValueListenableBuilder<String>(
-                valueListenable: searchNotifier,
-                builder: (_, query, __) {
-                  final filtered = items.where((item) => labelBuilder(item).toLowerCase().contains(query)).toList();
-                  if (filtered.isEmpty) {
-                    return Center(child: Text(context.tr('No results found'), style: TextStyle(color: Colors.grey)));
-                  }
-                  return ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) {
-                      final item = filtered[i];
-                      return ListTile(
-                        title: Text(labelBuilder(item), style: TextStyle(fontWeight: FontWeight.w500)),
-                        onTap: () {
-                          onChanged(item);
-                          Navigator.pop(ctx);
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDropdown<T>({
-    required String label,
-    required T? value,
-    required List<T> items,
-    required String Function(T) labelBuilder,
-    void Function(T?)? onChanged,
-    String? hint,
-  }) {
-    T? matchedValue;
-    if (value != null && items.isNotEmpty) {
-      if (value is Map && value.containsKey('id')) {
-        final valId = value['id']?.toString();
-        for (final item in items) {
-          if (item is Map && item['id']?.toString() == valId) {
-            matchedValue = item;
-            break;
-          }
-        }
-      } else {
-        for (final item in items) {
-          if (item == value) {
-            matchedValue = item;
-            break;
-          }
-        }
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-        SizedBox(height: 6),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<T>(
-              isExpanded: true,
-              menuMaxHeight: 300,
-              value: matchedValue,
-              hint: Text(hint ?? 'Select...', style: TextStyle(color: Colors.grey.shade500, fontSize: 14.sp)),
-              items: items.map((item) {
-                return DropdownMenuItem<T>(
-                  value: item,
-                  child: Text(labelBuilder(item), style: TextStyle(fontSize: 14.sp)),
-                );
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
-    });
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Text(
-        context.tr('Add Vehicle'),
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF000080)),
-      ),
-      content: ValueListenableBuilder<bool>(
-        valueListenable: _isLoadingNotifier,
-        builder: (context, isLoading, child) {
-          if (isLoading) {
-            return const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          return SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ValueListenableBuilder<String>(
-                  valueListenable: _errorMessageNotifier,
-                  builder: (context, errorMsg, child) {
-                    if (errorMsg.isNotEmpty) {
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: 12.0),
-                        child: Text(
-                          errorMsg,
-                          style: TextStyle(color: Colors.red, fontSize: 13.sp),
-                        ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-
-                // Vehicle Number
-                Text(context.tr('Vehicle Number *'), style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-                SizedBox(height: 6),
-                TextField(
-                  controller: _numberController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    hintText: context.tr('e.g. KA01AA1111'),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // 1. Vehicle Type
-                ValueListenableBuilder<List<dynamic>>(
-                  valueListenable: _vehicleTypesNotifier,
-                  builder: (context, vehicleTypes, child) {
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedTypeNotifier,
-                      builder: (context, selectedType, child) {
-                        return _buildDropdown<dynamic>(
-                          label: context.tr('Vehicle Type *'),
-                          value: selectedType,
-                          items: vehicleTypes,
-                          labelBuilder: (item) => context.tr(item['name'] ?? ''),
-                          onChanged: (val) {
-                            _selectedTypeNotifier.value = val;
-                            final validMakes = _makesForTypeAndSegment(val?['id']?.toString(), _selectedSegmentNotifier.value?['id']?.toString());
-                            if (_selectedMakeNotifier.value != null && !validMakes.any((m) => m['id']?.toString() == _selectedMakeNotifier.value?['id']?.toString())) {
-                              _selectedMakeNotifier.value = null;
-                              _selectedBrandNotifier.value = null;
-                            }
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // 2. Make (Searchable Dropdown)
-                ValueListenableBuilder<Map<String, dynamic>?>(
-                  valueListenable: _selectedTypeNotifier,
-                  builder: (context, selectedType, child) {
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedSegmentNotifier,
-                      builder: (context, selectedSegment, child) {
-                        final makes = _makesForTypeAndSegment(
-                          selectedType?['id']?.toString(),
-                          selectedSegment?['id']?.toString(),
-                        );
-                        return ValueListenableBuilder<Map<String, dynamic>?>(
-                          valueListenable: _selectedMakeNotifier,
-                          builder: (context, selectedMake, child) {
-                            return _buildSearchableDropdown<dynamic>(
-                              context,
-                              label: context.tr('Vehicle Make'),
-                              title: context.tr('Make'),
-                              value: selectedMake,
-                              items: makes,
-                              labelBuilder: (item) => item['name'] ?? '',
-                              hint: makes.isEmpty ? context.tr('No makes available') : context.tr('Select Make (e.g. Maruti, Hyundai)...'),
-                              onChanged: makes.isEmpty ? null : (val) {
-                                _selectedMakeNotifier.value = val;
-                                _selectedBrandNotifier.value = null;
-                              },
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // 3. Brand / Model (Searchable Dropdown)
-                ValueListenableBuilder<Map<String, dynamic>?>(
-                  valueListenable: _selectedSegmentNotifier,
-                  builder: (context, selectedSegment, child) {
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedMakeNotifier,
-                      builder: (context, selectedMake, child) {
-                        final brands = _brandModelsForSegmentAndMake(
-                          selectedSegment?['id']?.toString(),
-                          selectedMake?['id']?.toString(),
-                        );
-                        return ValueListenableBuilder<Map<String, dynamic>?>(
-                          valueListenable: _selectedBrandNotifier,
-                          builder: (context, selectedBrand, child) {
-                            return _buildSearchableDropdown<dynamic>(
-                              context,
-                              label: context.tr('Brand / Model'),
-                              title: context.tr('Brand Model'),
-                              value: selectedBrand,
-                              items: brands,
-                              labelBuilder: (item) => item['name'] ?? '',
-                              hint: brands.isEmpty ? context.tr('No models available') : context.tr('Select Model (e.g. Swift, Creta)...'),
-                              onChanged: brands.isEmpty ? null : (val) {
-                                _selectedBrandNotifier.value = val;
-                                if (val != null) {
-                                  final makeId = val['make_id']?.toString();
-                                  if (makeId != null && makeId.isNotEmpty) {
-                                    final matchedMake = _makesNotifier.value.firstWhere(
-                                      (mk) => mk['id']?.toString() == makeId,
-                                      orElse: () => null,
-                                    );
-                                    if (matchedMake != null) _selectedMakeNotifier.value = matchedMake;
-                                  }
-
-                                  final vtmId = val['vehicle_type_model_id']?.toString();
-                                  if (vtmId != null && vtmId.isNotEmpty) {
-                                    final matchedSegment = _vehicleTypeModelsNotifier.value.firstWhere(
-                                      (vm) => vm['id']?.toString() == vtmId,
-                                      orElse: () => null,
-                                    );
-                                    if (matchedSegment != null) {
-                                      _selectedSegmentNotifier.value = matchedSegment;
-                                      final vtId = matchedSegment['vehicle_type_id']?.toString();
-                                      if (vtId != null && vtId.isNotEmpty) {
-                                        final matchedVt = _vehicleTypesNotifier.value.firstWhere(
-                                          (vt) => vt['id']?.toString() == vtId,
-                                          orElse: () => null,
-                                        );
-                                        if (matchedVt != null) _selectedTypeNotifier.value = matchedVt;
-                                      }
-                                    }
-                                  }
-                                }
-                              },
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // 4. Segment (Auto-populated or manually selected)
-                ValueListenableBuilder<Map<String, dynamic>?>(
-                  valueListenable: _selectedTypeNotifier,
-                  builder: (context, selectedType, child) {
-                    final segments = _segmentsForType(selectedType?['id']?.toString());
-                    if (segments.isEmpty) return const SizedBox.shrink();
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedSegmentNotifier,
-                      builder: (context, selectedSegment, child) {
-                        return _buildDropdown<dynamic>(
-                          label: context.tr('Vehicle Model (Segment) *'),
-                          value: selectedSegment,
-                          items: segments,
-                          labelBuilder: (item) => item['name'] ?? '',
-                          onChanged: (val) {
-                            _selectedSegmentNotifier.value = val;
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // Color selection
-                ValueListenableBuilder<List<dynamic>>(
-                  valueListenable: _colorsNotifier,
-                  builder: (context, colors, child) {
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedColorNotifier,
-                      builder: (context, selectedColor, child) {
-                        return _buildDropdown<dynamic>(
-                          label: context.tr('Color'),
-                          value: selectedColor,
-                          items: colors,
-                          labelBuilder: (item) => context.tr(item['name'] ?? ''),
-                          hint: context.tr('Select Color...'),
-                          onChanged: (val) {
-                            _selectedColorNotifier.value = val;
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // Emission Standard selection
-                ValueListenableBuilder<List<dynamic>>(
-                  valueListenable: _emissionStandardsNotifier,
-                  builder: (context, emissions, child) {
-                    if (emissions.isEmpty) return const SizedBox.shrink();
-                    return ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: _selectedEmissionNotifier,
-                      builder: (context, selectedEmission, child) {
-                        return _buildDropdown<dynamic>(
-                          label: context.tr('Emission Standard'),
-                          value: selectedEmission,
-                          items: emissions,
-                          labelBuilder: (item) => item['name'] ?? '',
-                          hint: context.tr('Select Emission...'),
-                          onChanged: (val) {
-                            _selectedEmissionNotifier.value = val;
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // Wheel Type selection
-                Text(
-                  context.tr('Wheel Type *'),
-                  style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                ),
-                SizedBox(height: 6),
-                ValueListenableBuilder<String>(
-                  valueListenable: _selectedWheelTypeNotifier,
-                  builder: (context, selectedWheelType, child) {
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: RadioListTile<String>(
-                            title: Text(
-                              context.tr('Alloy Wheel'),
-                              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w500),
-                            ),
-                            value: 'alloy_wheel',
-                            groupValue: selectedWheelType,
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            activeColor: const Color(0xFF000080),
-                            onChanged: (val) {
-                              if (val != null) _selectedWheelTypeNotifier.value = val;
-                            },
-                          ),
-                        ),
-                        Expanded(
-                          child: RadioListTile<String>(
-                            title: Text(
-                              context.tr('Normal Wheel'),
-                              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w500),
-                            ),
-                            value: 'normal_wheel',
-                            groupValue: selectedWheelType,
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            activeColor: const Color(0xFF000080),
-                            onChanged: (val) {
-                              if (val != null) _selectedWheelTypeNotifier.value = val;
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      actions: [
-        ValueListenableBuilder<bool>(
-          valueListenable: _isLoadingNotifier,
-          builder: (context, isLoading, child) {
-            if (isLoading) return const SizedBox.shrink();
-
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(context.tr('Cancel'), style: const TextStyle(color: Colors.grey)),
-                ),
-                const SizedBox(width: 8),
-                ValueListenableBuilder<bool>(
-                  valueListenable: _isSavingNotifier,
-                  builder: (context, isSaving, child) {
-                    return ElevatedButton(
-                      onPressed: isSaving ? null : () => _save(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF000080),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: isSaving
-                          ? SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : Text(context.tr('Add')),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
   }
 }
