@@ -125,6 +125,7 @@ class NewJobScreen extends StatelessWidget {
   }
 
   void _selectCustomerFromVehicleSuggestion(BuildContext context, Map<String, dynamic> suggestion) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
     _customerSuggestionsNotifier.value = [];
     final vNumber = (suggestion['vehicle_number'] ?? '').toString().trim();
     _mobileController.text = vNumber;
@@ -135,9 +136,11 @@ class NewJobScreen extends StatelessWidget {
     if (unfocus) {
       FocusScope.of(context).unfocus();
     }
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+
     final token = context.read<AuthProvider>().token;
     if (token != null) {
-      final queryText = _mobileController.text.trim();
+      final queryText = (targetVehicleNumber ?? _mobileController.text).trim();
       if (queryText.isNotEmpty) {
         final customerProvider = context.read<CustomerProvider>();
         if (_searchTypeNotifier.value == 'vehicle') {
@@ -151,21 +154,26 @@ class NewJobScreen extends StatelessWidget {
           if (customerProvider.customerData != null) {
             final data = customerProvider.customerData!;
             final vehicles = (data['vehicles'] as List<dynamic>? ?? []);
-            final target = (targetVehicleNumber ?? queryText).replaceAll(' ', '').replaceAll('-', '').toLowerCase();
-            final matchedVehicle = vehicles.firstWhere(
-              (v) {
-                final no = (v['no'] ?? '').toString().replaceAll(' ', '').replaceAll('-', '').toLowerCase();
-                return no == target;
-              },
-              orElse: () => vehicles.isNotEmpty ? vehicles.first : null,
-            );
+            final target = queryText.replaceAll(' ', '').replaceAll('-', '').toLowerCase();
+            Map<String, dynamic>? matchedVehicle;
+            for (final v in vehicles) {
+              if (v is Map) {
+                final vMap = Map<String, dynamic>.from(v);
+                final no = (vMap['no'] ?? vMap['vehicle_number'] ?? '').toString().replaceAll(' ', '').replaceAll('-', '').toLowerCase();
+                if (no == target) {
+                  matchedVehicle = vMap;
+                  break;
+                }
+              }
+            }
+            matchedVehicle ??= (vehicles.isNotEmpty && vehicles.first is Map) ? Map<String, dynamic>.from(vehicles.first as Map) : null;
             if (matchedVehicle != null) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => InvoiceCreateScreen(
                     customer: data,
-                    vehicle: matchedVehicle,
+                    vehicle: matchedVehicle!,
                   ),
                 ),
               );
