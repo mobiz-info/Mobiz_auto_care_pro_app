@@ -17,9 +17,14 @@ import 'invoice_create_screen.dart';
 import 'vehicle_service_history_screen.dart';
 import 'quotation_create_screen.dart';
 
-class NewJobScreen extends StatelessWidget {
-  NewJobScreen({super.key});
+class NewJobScreen extends StatefulWidget {
+  const NewJobScreen({super.key});
 
+  @override
+  State<NewJobScreen> createState() => _NewJobScreenState();
+}
+
+class _NewJobScreenState extends State<NewJobScreen> {
   final TextEditingController _mobileController = TextEditingController();
   final ValueNotifier<String> _selectedCountryCodeNotifier = ValueNotifier(CountryConfig.phoneDialCode);
   final ValueNotifier<String> _selectedCountryIsoNotifier = ValueNotifier(CountryConfig.phoneIsoCode);
@@ -33,22 +38,49 @@ class NewJobScreen extends StatelessWidget {
 
   Timer? _debounce;
 
-  void _onMobileChanged(BuildContext context) {
+  @override
+  void initState() {
+    super.initState();
+    _mobileController.addListener(_onMobileChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CustomerProvider>().clearData();
+      _loadBranches();
+    });
+  }
+
+  @override
+  void dispose() {
+    _mobileController.removeListener(_onMobileChanged);
+    _mobileController.dispose();
+    _debounce?.cancel();
+    _selectedCountryCodeNotifier.dispose();
+    _selectedCountryIsoNotifier.dispose();
+    _searchTypeNotifier.dispose();
+    _customerSuggestionsNotifier.dispose();
+    _isSearchingSuggestionsNotifier.dispose();
+    _branchesNotifier.dispose();
+    _selectedBranchIdNotifier.dispose();
+    _isLoadingBranchesNotifier.dispose();
+    super.dispose();
+  }
+
+  void _onMobileChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     final text = _mobileController.text.trim();
     if (text.length >= 2) {
       _debounce = Timer(const Duration(milliseconds: 300), () {
-        _fetchCustomerSuggestions(context, text);
+        _fetchCustomerSuggestions(text);
       });
     } else {
       _customerSuggestionsNotifier.value = [];
-      if (text.isEmpty) {
+      if (text.isEmpty && mounted) {
         context.read<CustomerProvider>().clearData();
       }
     }
   }
 
-  Future<void> _loadBranches(BuildContext context) async {
+  Future<void> _loadBranches() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isCompanyAdmin) return;
 
@@ -67,11 +99,13 @@ class NewJobScreen extends StatelessWidget {
         }
       }
     } catch (_) {} finally {
-      _isLoadingBranchesNotifier.value = false;
+      if (mounted) {
+        _isLoadingBranchesNotifier.value = false;
+      }
     }
   }
 
-  Future<void> _fetchCustomerSuggestions(BuildContext context, String query) async {
+  Future<void> _fetchCustomerSuggestions(String query) async {
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
 
@@ -93,7 +127,7 @@ class NewJobScreen extends StatelessWidget {
     }
   }
 
-  void _selectCustomerFromSuggestion(BuildContext context, Map<String, dynamic> suggestion) {
+  void _selectCustomerFromSuggestion(Map<String, dynamic> suggestion) {
     _customerSuggestionsNotifier.value = [];
     final rawPhone = suggestion['phone']?.toString() ?? '';
     if (rawPhone.isEmpty) return;
@@ -121,18 +155,18 @@ class NewJobScreen extends StatelessWidget {
     _selectedCountryIsoNotifier.value = countryIso;
     _mobileController.text = strippedPhone;
 
-    _searchCustomer(context, unfocus: true);
+    _searchCustomer(unfocus: true);
   }
 
-  void _selectCustomerFromVehicleSuggestion(BuildContext context, Map<String, dynamic> suggestion) {
+  void _selectCustomerFromVehicleSuggestion(Map<String, dynamic> suggestion) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _customerSuggestionsNotifier.value = [];
     final vNumber = (suggestion['vehicle_number'] ?? '').toString().trim();
     _mobileController.text = vNumber;
-    _searchCustomer(context, unfocus: true, targetVehicleNumber: vNumber);
+    _searchCustomer(unfocus: true, targetVehicleNumber: vNumber);
   }
 
-  Future<void> _searchCustomer(BuildContext context, {bool unfocus = true, String? targetVehicleNumber}) async {
+  Future<void> _searchCustomer({bool unfocus = true, String? targetVehicleNumber}) async {
     if (unfocus) {
       FocusScope.of(context).unfocus();
     }
@@ -150,7 +184,7 @@ class NewJobScreen extends StatelessWidget {
             branchId: _selectedBranchIdNotifier.value,
             isVehicle: true,
           );
-          if (!context.mounted) return;
+          if (!mounted) return;
           if (customerProvider.customerData != null) {
             final data = customerProvider.customerData!;
             final vehicles = (data['vehicles'] as List<dynamic>? ?? []);
@@ -167,7 +201,7 @@ class NewJobScreen extends StatelessWidget {
               }
             }
             matchedVehicle ??= (vehicles.isNotEmpty && vehicles.first is Map) ? Map<String, dynamic>.from(vehicles.first as Map) : null;
-            if (matchedVehicle != null) {
+            if (matchedVehicle != null && mounted) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -194,13 +228,6 @@ class NewJobScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CustomerProvider>().clearData();
-      _loadBranches(context);
-    });
-
-    _mobileController.addListener(() => _onMobileChanged(context));
-
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('New Job'), style: TextStyle(fontWeight: FontWeight.w600)),
@@ -355,7 +382,7 @@ class NewJobScreen extends StatelessWidget {
                               controller: _mobileController,
                               textCapitalization: TextCapitalization.characters,
                               style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                              onSubmitted: (_) => _searchCustomer(context, unfocus: true),
+                              onSubmitted: (_) => _searchCustomer(unfocus: true),
                               decoration: InputDecoration(
                                 hintText: context.tr('Enter Vehicle Number'),
                                 filled: true,
@@ -411,7 +438,7 @@ class NewJobScreen extends StatelessWidget {
                     InkWell(
                       onTap: () {
                         if (_debounce?.isActive ?? false) _debounce!.cancel();
-                        _searchCustomer(context, unfocus: true);
+                        _searchCustomer(unfocus: true);
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
@@ -883,9 +910,9 @@ class NewJobScreen extends StatelessWidget {
           child: InkWell(
             onTap: () {
               if (isVehicleSuggestion) {
-                _selectCustomerFromVehicleSuggestion(context, c);
+                _selectCustomerFromVehicleSuggestion(c);
               } else {
-                _selectCustomerFromSuggestion(context, c);
+                _selectCustomerFromSuggestion(c);
               }
             },
             borderRadius: BorderRadius.circular(12),
