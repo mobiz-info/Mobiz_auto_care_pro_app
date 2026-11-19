@@ -1,30 +1,35 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:car_wash_mobile/main.dart';
+import 'package:car_wash_mobile/providers/auth_provider.dart';
+import 'package:car_wash_mobile/providers/broadcast_provider.dart';
+import 'package:car_wash_mobile/providers/dashboard_provider.dart';
+import 'package:car_wash_mobile/providers/font_size_provider.dart';
+import 'package:car_wash_mobile/providers/invoice_provider.dart';
+import 'package:car_wash_mobile/providers/job_card_provider.dart';
+import 'package:car_wash_mobile/providers/language_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const CarWashApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('App smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => LanguageProvider()),
+          ChangeNotifierProvider(create: (_) => FontSizeProvider()),
+          ChangeNotifierProvider(create: (_) => DashboardProvider()),
+          ChangeNotifierProvider(create: (_) => InvoiceProvider()),
+          ChangeNotifierProvider(create: (_) => BroadcastProvider()),
+          ChangeNotifierProvider(create: (_) => JobCardProvider()),
+        ],
+        child: const CarWashApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(CarWashApp), findsOneWidget);
   });
 }

@@ -38,27 +38,43 @@ class _QuotationExtraRow {
   final double price;
   final double quantity;
   final String remarks;
+  final double discount;
+  final String discountType; // 'amount' or 'percentage'
+  final double discountPercentage;
 
   _QuotationExtraRow({
     required this.name,
     required this.price,
     this.quantity = 1.0,
     this.remarks = '',
+    this.discount = 0.0,
+    this.discountType = 'amount',
+    this.discountPercentage = 0.0,
   });
 
-  double get total => price * quantity;
+  double get subtotal => price * quantity;
+  double get total {
+    final t = subtotal - discount;
+    return t < 0 ? 0.0 : t;
+  }
 }
 
 class QuotationCreateScreen extends StatefulWidget {
   final Map<String, dynamic> customer;
   final Map<String, dynamic> vehicle;
   final Map<String, dynamic>? existingQuotation;
+  final String? leadId;
+  final String? revisionOfId;
+  final bool jobWorkflow;
 
   const QuotationCreateScreen({
     super.key,
     required this.customer,
     required this.vehicle,
     this.existingQuotation,
+    this.leadId,
+    this.revisionOfId,
+    this.jobWorkflow = false,
   });
 
   @override
@@ -98,11 +114,13 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
   final List<_QuotationItemRow> _items = [];
   final List<_QuotationExtraRow> _extras = [];
 
-  // Extras input controllers
+  // Extras / Particulars input controllers
   final TextEditingController _extraNameController = TextEditingController();
   final TextEditingController _extraPriceController = TextEditingController();
   final TextEditingController _extraQtyController = TextEditingController(text: '1');
+  final TextEditingController _extraDiscountController = TextEditingController(text: '0');
   final TextEditingController _extraRemarksController = TextEditingController();
+  bool _extraUsePercentageDiscount = false;
 
   // Additional fields
   final TextEditingController _additionalServiceController = TextEditingController();
@@ -113,13 +131,21 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
   final Set<String> _selectedTaxIds = {};
   bool _applyGst = true;
   bool _isGrandTotal = true;
+  bool _usePercentageDiscount = false; // false = Amount, true = Percentage
   final TextEditingController _discountController = TextEditingController(text: '0');
 
   double get itemsSubtotal => _items.fold(0.0, (sum, item) => sum + item.total);
   double get extrasSubtotal => _extras.fold(0.0, (sum, extra) => sum + extra.total);
   double get subtotal => itemsSubtotal + extrasSubtotal;
 
-  double get discountAmount => double.tryParse(_discountController.text) ?? 0.0;
+  double get discountAmount {
+    final val = double.tryParse(_discountController.text) ?? 0.0;
+    if (_usePercentageDiscount) {
+      return (subtotal * (val / 100.0));
+    } else {
+      return val;
+    }
+  }
   double get taxableValue => (subtotal - discountAmount).clamp(0.0, double.infinity);
 
   double get totalTaxPercent {
@@ -136,7 +162,8 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
   double get taxAmount => taxableValue * (totalTaxPercent / 100.0);
   double get grandTotal => (taxableValue + taxAmount).clamp(0.0, double.infinity);
 
-  bool get isEditing => widget.existingQuotation != null;
+  bool get isRevisionMode => widget.revisionOfId != null;
+  bool get isEditing => widget.existingQuotation != null && !isRevisionMode;
 
   @override
   void initState() {
@@ -154,6 +181,7 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
     _extraNameController.dispose();
     _extraPriceController.dispose();
     _extraQtyController.dispose();
+    _extraDiscountController.dispose();
     _extraRemarksController.dispose();
     _additionalServiceController.dispose();
     _additionalDaysController.dispose();
@@ -206,12 +234,17 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
       }
 
       // Pre-fill existing quotation data if editing
-      if (isEditing && widget.existingQuotation != null) {
+      if (widget.existingQuotation != null) {
         final eq = widget.existingQuotation!;
         _additionalServiceController.text = eq['additional_services'] ?? '';
         _additionalDaysController.text = (eq['additional_days_needed'] ?? 0).toString();
-        _discountController.text = (eq['discount'] ?? 0).toString();
         _isGrandTotal = (eq['is_grand_total'] as bool?) ?? true;
+        _usePercentageDiscount = (eq['discount_type'] ?? '') == 'percentage';
+        if (_usePercentageDiscount && eq['discount_percentage'] != null && (eq['discount_percentage'] as num) > 0) {
+          _discountController.text = (eq['discount_percentage']).toString();
+        } else {
+          _discountController.text = (eq['discount'] ?? 0).toString();
+        }
 
         final eqTaxPct = (eq['tax_percentage'] as num?)?.toDouble() ?? 0.0;
         final eqTaxAmt = (eq['tax_amount'] as num?)?.toDouble() ?? 0.0;
@@ -255,11 +288,19 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
 
         final rawExtras = eq['extras'] as List<dynamic>? ?? [];
         for (final ex in rawExtras) {
+          final p = (ex['price'] as num?)?.toDouble() ?? 0.0;
+          final q = (ex['quantity'] as num?)?.toDouble() ?? (ex['qty'] as num?)?.toDouble() ?? 1.0;
+          final d = (ex['discount'] as num?)?.toDouble() ?? 0.0;
+          final dt = (ex['discount_type'] ?? 'amount').toString();
+          final dp = (ex['discount_percentage'] as num?)?.toDouble() ?? 0.0;
           _extras.add(_QuotationExtraRow(
             name: ex['name'] ?? '',
-            price: (ex['price'] as num?)?.toDouble() ?? 0.0,
-            quantity: (ex['quantity'] as num?)?.toDouble() ?? (ex['qty'] as num?)?.toDouble() ?? 1.0,
+            price: p,
+            quantity: q,
             remarks: (ex['remarks'] ?? ex['description'] ?? '').toString(),
+            discount: d,
+            discountType: dt,
+            discountPercentage: dp,
           ));
         }
       }
@@ -666,15 +707,16 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
     });
   }
 
-  // ── Add Extra Entry ───────────────────────────────────────────────────────
+  // ── Add Extra / Particular Entry ──────────────────────────────────────────
   void _addExtra() {
     final name = _extraNameController.text.trim();
     final price = double.tryParse(_extraPriceController.text) ?? 0.0;
     final qty = double.tryParse(_extraQtyController.text) ?? 1.0;
     final remarks = _extraRemarksController.text.trim();
+    final rawDiscount = double.tryParse(_extraDiscountController.text) ?? 0.0;
 
     if (name.isEmpty) {
-      _snack(context.tr('Please enter extra item name'), isError: true);
+      _snack(context.tr('Please enter particular item name'), isError: true);
       return;
     }
     if (price < 0) {
@@ -685,6 +727,27 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
       _snack(context.tr('Quantity must be greater than 0'), isError: true);
       return;
     }
+    if (rawDiscount < 0) {
+      _snack(context.tr('Discount cannot be negative'), isError: true);
+      return;
+    }
+
+    final double discount;
+    final double discountPercentage;
+    final sub = price * qty;
+
+    if (_extraUsePercentageDiscount) {
+      discountPercentage = rawDiscount;
+      discount = (sub * discountPercentage) / 100.0;
+    } else {
+      discount = rawDiscount;
+      discountPercentage = sub > 0 ? (discount / sub) * 100.0 : 0.0;
+    }
+
+    if (discount > sub) {
+      _snack(context.tr('Discount cannot be greater than item total'), isError: true);
+      return;
+    }
 
     setState(() {
       _extras.add(_QuotationExtraRow(
@@ -692,10 +755,14 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
         price: price,
         quantity: qty,
         remarks: remarks,
+        discount: discount,
+        discountType: _extraUsePercentageDiscount ? 'percentage' : 'amount',
+        discountPercentage: discountPercentage,
       ));
       _extraNameController.clear();
       _extraPriceController.clear();
       _extraQtyController.text = '1';
+      _extraDiscountController.text = '0';
       _extraRemarksController.clear();
     });
   }
@@ -716,6 +783,9 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
       final data = {
         'customer_id': widget.customer['id'],
         'vehicle_id': widget.vehicle['id'],
+        if ((widget.leadId ?? widget.existingQuotation?['lead_id']) != null)
+          'lead_id': widget.leadId ?? widget.existingQuotation?['lead_id'],
+        if (widget.revisionOfId != null) 'revision_of_id': widget.revisionOfId,
         'items': _items.map((it) => {
           'service_id': it.serviceId,
           'service_name': it.serviceName,
@@ -732,6 +802,10 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
           'price': ex.price,
           'quantity': ex.quantity,
           'qty': ex.quantity,
+          'discount': ex.discount,
+          'discount_type': ex.discountType,
+          'discount_percentage': ex.discountPercentage,
+          'total': ex.total,
           'remarks': ex.remarks,
         }).toList(),
         'additional_services': _additionalServiceController.text.trim(),
@@ -740,25 +814,35 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
         'tax_percentage': totalTaxPercent,
         'tax_amount': taxAmount,
         'discount': discountAmount,
+        'discount_type': _usePercentageDiscount ? 'percentage' : 'amount',
+        'discount_percentage': _usePercentageDiscount ? (double.tryParse(_discountController.text) ?? 0.0) : 0.0,
         'grand_total': grandTotal,
         'is_grand_total': _isGrandTotal,
       };
 
       final response = isEditing
-          ? await ApiService.updateQuotation(widget.existingQuotation!['id'], data, token)
-          : await ApiService.createQuotation(data, token);
+          ? widget.jobWorkflow
+              ? await ApiService.updateJobQuotation(widget.existingQuotation!['id'], data, token)
+              : await ApiService.updateQuotation(widget.existingQuotation!['id'], data, token)
+          : widget.jobWorkflow
+              ? await ApiService.createJobQuotation(data, token)
+              : await ApiService.createQuotation(data, token);
 
       setState(() => _isSaving = false);
 
       if (response['success'] == true) {
         final qId = response['quotation_id'] ?? widget.existingQuotation?['id'];
         if (!mounted) return;
-        _snack(isEditing ? context.tr('Quotation updated successfully') : context.tr('Quotation saved successfully'));
+        _snack(isEditing
+            ? context.tr('Quotation updated successfully')
+            : isRevisionMode
+                ? context.tr('Revised quotation created')
+                : context.tr('Quotation saved successfully'));
 
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => QuotationViewScreen(quotationId: qId),
+            builder: (_) => QuotationViewScreen(quotationId: qId, jobWorkflow: widget.jobWorkflow),
           ),
         );
       } else {
@@ -786,7 +870,11 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
       backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
         title: Text(
-          isEditing ? context.tr('Edit Quotation') : context.tr('Create Quotation'),
+                      isEditing
+                          ? context.tr('Edit Quotation')
+                          : isRevisionMode
+                              ? context.tr('Revise Quotation')
+                              : context.tr('Create Quotation'),
           style: GoogleFonts.inter(fontWeight: FontWeight.w700),
         ),
         backgroundColor: Color(0xFF000080),
@@ -1424,13 +1512,114 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Discount with 2 Radios (Amount & Percentage) ──
           Row(
             children: [
-              const Icon(Icons.more_horiz, color: Color(0xFF000080), size: 20),
-              SizedBox(width: 8),
+              const Icon(Icons.discount_outlined, color: Color(0xFF000080), size: 20),
+              const SizedBox(width: 8),
               Text(
-                context.tr('Extras'),
-                style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
+                context.tr('Discount'),
+                style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: const Color(0xFF000080)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          Row(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Radio<bool>(
+                    value: false,
+                    groupValue: _usePercentageDiscount,
+                    activeColor: const Color(0xFF000080),
+                    onChanged: (val) {
+                      setState(() {
+                        _usePercentageDiscount = val ?? false;
+                      });
+                    },
+                  ),
+                  Text(
+                    context.tr('Amount'),
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.sp,
+                      color: const Color(0xFF1e293b),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 24),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Radio<bool>(
+                    value: true,
+                    groupValue: _usePercentageDiscount,
+                    activeColor: const Color(0xFF000080),
+                    onChanged: (val) {
+                      setState(() {
+                        _usePercentageDiscount = val ?? true;
+                      });
+                    },
+                  ),
+                  Text(
+                    context.tr('Percentage'),
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.sp,
+                      color: const Color(0xFF1e293b),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          TextFormField(
+            controller: _discountController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w700,
+              fontSize: 14.sp,
+            ),
+            decoration: InputDecoration(
+              labelText: _usePercentageDiscount
+                  ? context.tr('Discount Percentage (%)')
+                  : context.tr('Discount Amount'),
+              prefixText: _usePercentageDiscount ? null : '$currencySymbol ',
+              suffixText: _usePercentageDiscount ? '%' : null,
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+          ),
+          if (_usePercentageDiscount && discountAmount > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${context.tr("Calculated Discount")}: -$currencySymbol${discountAmount.toStringAsFixed(2)}',
+              style: GoogleFonts.inter(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.green.shade700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 12),
+
+          // ── Particulars Items ──
+          Row(
+            children: [
+              const Icon(Icons.format_list_bulleted, color: Color(0xFF000080), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                context.tr('Particulars'),
+                style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: const Color(0xFF000080)),
               ),
             ],
           ),
@@ -1443,7 +1632,7 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
                 child: TextField(
                   controller: _extraNameController,
                   decoration: InputDecoration(
-                    labelText: context.tr('Extra Name'),
+                    labelText: context.tr('Particular Name'),
                     filled: true,
                     fillColor: Colors.grey.shade50,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -1471,11 +1660,93 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
                   controller: _extraPriceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: context.tr('Price ($currencySymbol)'),
+                    labelText: context.tr('Rate ($currencySymbol)'),
                     filled: true,
                     fillColor: Colors.grey.shade50,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Particular Discount Row (Amount & Percentage)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _extraDiscountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: _extraUsePercentageDiscount
+                        ? context.tr('Discount (%)')
+                        : context.tr('Discount ($currencySymbol)'),
+                    prefixText: _extraUsePercentageDiscount ? null : '$currencySymbol ',
+                    suffixText: _extraUsePercentageDiscount ? '%' : null,
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _extraUsePercentageDiscount = false;
+                        });
+                      },
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(11)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: !_extraUsePercentageDiscount ? const Color(0xFF000080) : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(11)),
+                        ),
+                        child: Text(
+                          currencySymbol,
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.sp,
+                            color: !_extraUsePercentageDiscount ? Colors.white : Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _extraUsePercentageDiscount = true;
+                        });
+                      },
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: _extraUsePercentageDiscount ? const Color(0xFF000080) : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
+                        ),
+                        child: Text(
+                          '%',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.sp,
+                            color: _extraUsePercentageDiscount ? Colors.white : Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1523,6 +1794,7 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
                 final String qtyStr = ex.quantity.truncateToDouble() == ex.quantity
                     ? ex.quantity.toInt().toString()
                     : ex.quantity.toStringAsFixed(1);
+                final bool hasDiscount = ex.discount > 0;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: Row(
@@ -1542,6 +1814,13 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
                               '${context.tr("Qty")}: $qtyStr  •  Rate: $currencySymbol${ex.price.toStringAsFixed(2)}',
                               style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade500),
                             ),
+                            if (hasDiscount)
+                              Text(
+                                ex.discountType == 'percentage'
+                                    ? '${context.tr("Discount")}: ${ex.discountPercentage.toStringAsFixed(ex.discountPercentage % 1 == 0 ? 0 : 2)}% (-$currencySymbol${ex.discount.toStringAsFixed(2)})'
+                                    : '${context.tr("Discount")}: -$currencySymbol${ex.discount.toStringAsFixed(2)}',
+                                style: GoogleFonts.inter(fontSize: 11.sp, fontWeight: FontWeight.w600, color: Colors.green.shade700),
+                              ),
                           ],
                         ),
                       ),
@@ -1632,26 +1911,16 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
           _summaryRow(context.tr('Subtotal'), '$currencySymbol${subtotal.toStringAsFixed(2)}'),
           SizedBox(height: 10),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(context.tr('Discount'), style: GoogleFonts.inter(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-              SizedBox(
-                width: 120,
-                child: TextField(
-                  controller: _discountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textAlign: TextAlign.end,
-                  decoration: InputDecoration(
-                    prefixText: currencySymbol,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 10),
+          if (discountAmount > 0) ...[
+            _summaryRow(
+              _usePercentageDiscount
+                  ? '${context.tr("Discount")} (${_discountController.text}%)'
+                  : context.tr('Discount'),
+              '-$currencySymbol${discountAmount.toStringAsFixed(2)}',
+              valueColor: Colors.green.shade700,
+            ),
+            const SizedBox(height: 10),
+          ],
 
           if (_applyGst && _selectedTaxIds.isNotEmpty) ...[
             ..._availableTaxes.where((tax) => _selectedTaxIds.contains((tax['id'] ?? '').toString())).map((tax) {
@@ -1767,12 +2036,12 @@ class _QuotationCreateScreenState extends State<QuotationCreateScreen> {
     );
   }
 
-  Widget _summaryRow(String label, String value) {
+  Widget _summaryRow(String label, String value, {Color? valueColor}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: GoogleFonts.inter(fontSize: 14.sp, color: Colors.grey.shade700)),
-        Text(value, style: GoogleFonts.inter(fontSize: 14.sp, fontWeight: FontWeight.bold)),
+        Text(value, style: GoogleFonts.inter(fontSize: 14.sp, fontWeight: FontWeight.bold, color: valueColor)),
       ],
     );
   }

@@ -21,12 +21,20 @@ class LanguageProvider extends ChangeNotifier {
     _loadLanguage();
   }
 
+  static Locale _parseLocale(String code) {
+    if (code.contains('_')) {
+      final parts = code.split('_');
+      return Locale(parts[0], parts[1]);
+    }
+    return Locale(code);
+  }
+
   // Load language from Shared Preferences and dynamic cache
   Future<void> _loadLanguage() async {
     final prefs = await SharedPreferences.getInstance();
     // Fall back to kDefaultLanguageCode (set by setup_country.dart) if no user preference saved
     final langCode = prefs.getString('language_code') ?? kDefaultLanguageCode;
-    _locale = Locale(langCode);
+    _locale = _parseLocale(langCode);
     await _loadCachedTranslations(langCode);
     debugPrint('LanguageProvider initialized with locale: $langCode. Cached translations count: ${_dynamicTranslations.length}');
     notifyListeners();
@@ -35,7 +43,8 @@ class LanguageProvider extends ChangeNotifier {
   // Save/Change language and download translations if not cached
   Future<void> setLanguage(String langCode) async {
     debugPrint('setLanguage called with langCode: $langCode');
-    if (_locale.languageCode == langCode && _dynamicTranslations.isNotEmpty) {
+    final parsed = _parseLocale(langCode);
+    if (_locale == parsed && _dynamicTranslations.isNotEmpty) {
       debugPrint('Language is already $langCode and cache is not empty. Skipping download.');
       return;
     }
@@ -78,13 +87,13 @@ class LanguageProvider extends ChangeNotifier {
         }
       }
 
-      _locale = Locale(langCode);
+      _locale = _parseLocale(langCode);
       await prefs.setString('language_code', langCode);
       await _loadCachedTranslations(langCode);
     } catch (e) {
       debugPrint('Error setting language / fetching Google translations: $e');
       // Fallback: still change language code so hardcoded translations work
-      _locale = Locale(langCode);
+      _locale = _parseLocale(langCode);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('language_code', langCode);
       await _loadCachedTranslations(langCode);
@@ -151,7 +160,7 @@ class LanguageProvider extends ChangeNotifier {
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode({
           'q': chunkValues,
-          'target': langCode,
+          'target': langCode.split('_')[0],
           'source': 'en',
           'format': 'text',
         }),
@@ -585,8 +594,10 @@ class LanguageProvider extends ChangeNotifier {
       'Powered by': 'Propulsé par',
       'Dear': 'Cher(ère)',
       'Your invoice': 'Votre facture',
+      'Your proforma invoice': 'Votre facture proforma',
       'has been generated successfully at': 'a été générée avec succès chez',
       'Invoice Details': 'Détails de la facture',
+      'Proforma Invoice Details': 'Détails de la facture proforma',
       'Paid': 'Payé',
       'Balance': 'Solde',
       'Oil:': 'Huile:',
@@ -1870,6 +1881,146 @@ class LanguageProvider extends ChangeNotifier {
       'msg_welcome': 'สวัสดีครับ {customer}! 👋 ยินดีต้อนรับสู่ศูนย์บริการของเรา รถ {vehicle} ของคุณมาถึงแล้วและอยู่ในมือของผู้เชี่ยวชาญ เราจะแจ้งให้คุณทราบ!',
       'msg_ready_alert': 'สวัสดีครับ {customer}! 🎉 ข่าวดี! รถ {vehicle} ของคุณพร้อมรับแล้ว กรุณามารับในเร็วๆ นี้',
       'msg_thanks': 'เรียน {customer}, 🙏 ขอบคุณที่ไว้วางใจเราดูแลรถ {vehicle} ของคุณ หวังว่าคุณจะได้รับประสบการณ์ที่ดี พบกันใหม่นะครับ!',
+    },
+    'fa': {
+      'dashboard': 'داشبورد',
+      'menu': 'منو',
+      'new_job': 'کار جدید',
+      'book_now': 'رزرو نوبت',
+      'bookings': 'رزروها',
+      'bill': 'صورت‌حساب',
+      'outstanding': 'معوقات',
+      'receipt': 'رسید',
+      'customers': 'مشتریان',
+      'schemes': 'طرح‌ها',
+      'reports': 'گزارش‌ها',
+      'vehicle': 'خودرو',
+      'notifications': 'اعلان‌ها',
+      'language': 'زبان',
+      'complaints': 'شکایات',
+      'logout': 'خروج',
+      'welcome_back': 'خوش آمدید',
+      'add_extras': 'افزودن موارد اضافی',
+      'services_subtotal': 'جمع خدمات',
+      'scheme_discount': 'تخفیف طرح',
+      'manual_discount': 'تخفیف دستی',
+      'bill_summary': 'خلاصه صورت‌حساب',
+      'amount_collected': 'مبلغ دریافت شده',
+      'taxes': 'مالیات‌ها',
+      'quick_menu': 'منوی سریع',
+      'login': 'ورود',
+      'username_or_email': 'نام کاربری یا ایمیل',
+      'enter_username_or_email': 'نام کاربری یا ایمیل را وارد کنید',
+      'password': 'رمز عبور',
+      'enter_password': 'رمز عبور را وارد کنید',
+      'remember_me': 'مرا به خاطر بسپار',
+      'forgot_password': 'رمز عبور را فراموش کرده‌اید؟',
+      'sign_in': 'ورود',
+      'logout_confirm': 'آیا مطمئن هستید که می‌خواهید خارج شوید؟',
+      'cancel': 'انصراف',
+      'branch_admin': 'مدیر شعبه',
+      'company_admin': 'مدیر شرکت',
+      'recent_invoices': 'فاکتورهای اخیر',
+      'select_language': 'انتخاب زبان',
+      'admin_login': 'ورود مدیر',
+      'username': 'نام کاربری',
+      'please_enter_credentials': 'لطفاً نام کاربری و رمز عبور را وارد کنید',
+      'todays_summary': 'خلاصه امروز',
+      'overview': 'نمای کلی',
+      'todays_recent_jobs': 'کارهای اخیر امروز',
+      'revenue': 'درآمد',
+      'collected': 'دریافت شده',
+      'jobs': 'کارها',
+      'due': 'بدهی',
+      'paid': 'پرداخت شده',
+      'invoices_count': 'فاکتورها',
+      'exit_app': 'خروج از برنامه',
+      'exit_confirm': 'آیا می‌خواهید از برنامه خارج شوید؟',
+      'exit': 'خروج',
+      'bills': 'صورت‌حساب‌ها',
+      'vehicle_search': 'جستجوی خودرو',
+      'not_authenticated': 'احراز هویت نشده است',
+      'network_error': 'خطای شبکه',
+      'failed_to_load': 'بارگیری ناموفق بود',
+      'retry': 'تلاش مجدد',
+      'save': 'ذخیره',
+      'saving': 'در حال ذخیره...',
+      'delete': 'حذف',
+      'add': 'افزودن',
+      'create': 'ایجاد',
+      'date': 'تاریخ',
+      'start': 'شروع',
+      'end': 'پایان',
+      'status': 'وضعیت',
+      'description': 'توضیحات',
+      'name': 'نام',
+      'phone': 'تلفن',
+      'email': 'ایمیل',
+      'address': 'آدرس',
+      'actions': 'عملیات',
+      'total': 'مجموع',
+      'balance': 'مانده',
+      'amount': 'مبلغ',
+      'all': 'همه',
+      'available_schemes': 'طرح‌های موجود',
+      'no_schemes_available': 'هیچ طرحی موجود نیست',
+      'add_scheme': 'افزودن طرح',
+      'scheme_name': 'نام طرح',
+      'scheme_type': 'نوع طرح',
+      'paid_visits': 'مراجعات نقدی',
+      'free_visits': 'مراجعات رایگان',
+      'discount_percentage': 'درصد تخفیف',
+      'voucher_no': 'شماره کوپن',
+      'add_voucher': 'افزودن کوپن',
+      'services': 'خدمات',
+      'customer_types': 'انواع مشتری',
+      'vehicle_types': 'انواع خودرو',
+      'save_scheme': 'ذخیره طرح',
+      'scheme_created': 'طرح ایجاد شد',
+      'enter_scheme_details_error': 'نام و نوع طرح را وارد کنید',
+      'booking_details': 'جزئیات رزرو',
+      'customer_name': 'نام مشتری',
+      'phone_number': 'شماره تلفن',
+      'vehicle_number': 'شماره خودرو',
+      'select_service': 'انتخاب خدمت',
+      'select_date': 'انتخاب تاریخ',
+      'time_slot': 'بازه زمانی',
+      'booking_created': 'رزرو ایجاد شد',
+      'booking_failed': 'رزرو ناموفق بود',
+      'bookings_list': 'لیست رزروها',
+      'no_bookings_found': 'هیچ رزروی یافت نشد',
+      'receipts': 'رسیدها',
+      'no_receipts_found': 'هیچ رسیدی یافت نشد',
+      'collection': 'وصول مطالبات',
+      'collect_payment': 'دریافت پرداخت',
+      'payment_collected': 'پرداخت دریافت شد',
+      'add_complaint': 'ثبت شکایت',
+      'subject': 'موضوع',
+      'complaint_created': 'شکایت ثبت شد',
+      'no_complaints_found': 'هیچ شکایتی یافت نشد',
+      'add_new_customer': 'افزودن مشتری جدید',
+      'edit_customer': 'ویرایش مشتری',
+      'customer_created': 'مشتری ایجاد شد',
+      'customer_updated': 'مشتری به‌روزرسانی شد',
+      'no_customers_found': 'هیچ مشتری یافت نشد',
+      'create_invoice': 'ایجاد فاکتور',
+      'invoice_details': 'جزئیات فاکتور',
+      'invoice_created': 'فاکتور ایجاد شد',
+      'invoice_number': 'شماره فاکتور',
+      'subtotal': 'جمع جزء',
+      'tax': 'مالیات',
+      'grand_total': 'جمع کل',
+      'select_vehicle': 'انتخاب خودرو',
+      'select_scheme': 'انتخاب طرح',
+      'job_details': 'جزئیات کار',
+      'revenue_report': 'گزارش درآمد',
+      'jobs_report': 'گزارش کارها',
+      'sales_summary': 'خلاصه فروش',
+      'search_by_vehicle_number': 'جستجو بر اساس شماره پلاک',
+      'vehicle_details': 'جزئیات خودرو',
+      'msg_welcome': 'سلام {customer}، به {branch} خوش آمدید. خودروی شما {vehicle} به سلامت تحویل داده شد و در دستان متخصصین ماست. شما را در جریان قرار خواهیم داد!',
+      'msg_ready_alert': 'سلام {customer}، خبر خوب! خودروی شما {vehicle} آماده تحویل است. لطفاً در اولین فرصت مراجعه فرمایید.\\nتیم پشتیبانی {branch}',
+      'msg_thanks': 'مشتری گرامی {customer} 🙏، از اینکه خودروی خود {vehicle} را به ما سپردید سپاسگزاریم. امیدواریم تجربه عالی داشته باشید. به امید دیدار مجدد شما!\\nتیم پشتیبانی {branch}',
     },
   };
 }

@@ -3576,6 +3576,9 @@ class ApiService {
     String token, {
     required double amountCollected,
     required String paymentMode,
+    double discount = 0.0,
+    String discountType = 'amount',
+    double discountPercentage = 0.0,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/job-cards/$jobCardId/invoice/'),
@@ -3586,6 +3589,9 @@ class ApiService {
       body: jsonEncode({
         'amount_collected': amountCollected,
         'payment_mode': paymentMode,
+        'discount': discount,
+        'discount_type': discountType,
+        'discount_percentage': discountPercentage,
       }),
     );
     return _decodeJobCardResponse(response);

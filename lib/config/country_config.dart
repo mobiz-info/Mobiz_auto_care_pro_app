@@ -353,6 +353,12 @@ class CountryConfig {
   /// e.g. 'India', 'Saudi Arabia'
   static String get displayName => _current.displayName;
 
+  /// Returns true if the currently active country is the UAE.
+  static bool get isUAE =>
+      _current.code == CountryCode.uae ||
+      _current.phoneIsoCode == 'AE' ||
+      _current.currencyCode == 'AED';
+
   /// Returns the dial code (e.g. '+84') for a given ISO code (e.g. 'VN').
   /// Falls back to the current country's dial code if not found.
   static String dialCodeForIso(String isoCode) {

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../config/country_config.dart';
 
 class CustomerInvoicesCollectionScreen extends StatelessWidget {
   final String customerId;
@@ -24,7 +25,8 @@ class CustomerInvoicesCollectionScreen extends StatelessWidget {
   final ValueNotifier<bool> _loadingNotifier = ValueNotifier(true);
   final ValueNotifier<String> _errorNotifier = ValueNotifier('');
   final ValueNotifier<bool> _collectingNotifier = ValueNotifier(false);
-  final ValueNotifier<String> _paymentModeNotifier = ValueNotifier('digital_payments');
+  final ValueNotifier<String> _paymentModeNotifier =
+      ValueNotifier(CountryConfig.isUAE ? 'cash' : 'digital_payments');
   final TextEditingController _amountController = TextEditingController();
 
   Future<void> _fetchCustomerInvoices(BuildContext context) async {
@@ -484,10 +486,11 @@ class CustomerInvoicesCollectionScreen extends StatelessWidget {
                                   ),
                                 ),
                                 items: [
-                                  DropdownMenuItem(
-                                    value: 'digital_payments',
-                                    child: Text(context.tr('Digital payments')),
-                                  ),
+                                  if (!CountryConfig.isUAE)
+                                    DropdownMenuItem(
+                                      value: 'digital_payments',
+                                      child: Text(context.tr('Digital payments')),
+                                    ),
                                   DropdownMenuItem(
                                     value: 'cash',
                                     child: Text(context.tr('Cash')),

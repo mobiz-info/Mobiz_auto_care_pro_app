@@ -14,7 +14,10 @@ import 'add_customer_screen.dart';
 import 'quotation_create_screen.dart';
 
 class QuotationSearchScreen extends StatelessWidget {
-  const QuotationSearchScreen({super.key});
+  final String? leadId;
+  final bool jobWorkflow;
+
+  const QuotationSearchScreen({super.key, this.leadId, this.jobWorkflow = false});
 
   static final TextEditingController _mobileController = TextEditingController();
   static final ValueNotifier<String> _selectedCountryCodeNotifier = ValueNotifier(CountryConfig.phoneDialCode);
@@ -543,6 +546,8 @@ class QuotationSearchScreen extends StatelessWidget {
                                       builder: (context) => QuotationCreateScreen(
                                         customer: data,
                                         vehicle: v,
+                                        leadId: leadId,
+                                        jobWorkflow: jobWorkflow,
                                       ),
                                     ),
                                   );

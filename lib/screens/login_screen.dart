@@ -4,6 +4,7 @@ import '../providers/language_provider.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import 'language_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -47,15 +48,89 @@ class _LoginScreenState extends State<LoginScreen> {
     // to show MainScreen because auth.isAuthenticated is now true.
   }
 
+  String _getLanguageLabel(String code, [String? countryCode]) {
+    if (code == 'fa') {
+      if (countryCode == 'AF') return 'دری';
+      return 'فارسی';
+    }
+    if (code == 'fa_AF') return 'دری';
+    switch (code) {
+      case 'fr': return 'Français';
+      case 'hi': return 'हिन्दी';
+      case 'ml': return 'മലയാളം';
+      case 'te': return 'తెలుగు';
+      case 'ta': return 'தமிழ்';
+      case 'kn': return 'ಕನ್ನಡ';
+      case 'or': return 'ଓଡ଼ିଆ';
+      case 'ar': return 'العربية';
+      case 'ur': return 'اردو';
+      case 'bn': return 'বাংলা';
+      case 'si': return 'සිංහල';
+      case 'ps': return 'پښتو';
+      case 'ru': return 'Русский';
+      case 'zh': return '中文';
+      case 'vi': return 'Tiếng Việt';
+      case 'th': return 'ไทย';
+      default: return 'English';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final languageProvider = context.watch<LanguageProvider>();
 
     return Scaffold(
-      backgroundColor: Color(0xFF000080),
+      backgroundColor: const Color(0xFF000080),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
+        child: Stack(
+          children: [
+            Positioned(
+              top: 12.h,
+              right: 16.w,
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LanguageScreen()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(20.r),
+                child: Container(
+                  padding: REdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20.r),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.language, color: Colors.white, size: 16.sp),
+                      SizedBox(width: 6.w),
+                      Text(
+                        _getLanguageLabel(
+                          languageProvider.locale.languageCode,
+                          languageProvider.locale.countryCode,
+                        ),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 16.sp),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: SingleChildScrollView(
             padding: REdgeInsets.all(24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -163,6 +238,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
+        ),
+          ],
         ),
       ),
     );

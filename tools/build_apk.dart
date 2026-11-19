@@ -6,9 +6,8 @@
 //
 // It will:
 //   1. Run "flutter build apk --release"
-//   2. Read the selected country name from android/gradle.properties
-//   3. Read the app version from pubspec.yaml
-//   4. Copy the output app-release.apk to "Car wash [Country] V [Version].apk" in the flutter-apk outputs folder.
+//   2. Read the app version from pubspec.yaml
+//   3. Ensure the output APK is named "Mobiz auto care pro v [Version].apk" in build/app/outputs/flutter-apk/
 
 import 'dart:io';
 
@@ -30,21 +29,8 @@ void main() async {
     exit(exitCode);
   }
 
-  // 2. Read selected country from android/gradle.properties
-  var country = 'India';
-  final propertiesFile = File('android/gradle.properties');
-  if (propertiesFile.existsSync()) {
-    final lines = propertiesFile.readAsLinesSync();
-    for (final line in lines) {
-      if (line.trim().startsWith('selectedCountryName=')) {
-        country = line.split('=')[1].trim();
-        break;
-      }
-    }
-  }
-
-  // 3. Read version from pubspec.yaml
-  var version = '1.3.5';
+  // 2. Read version from pubspec.yaml
+  var version = '1.6.8';
   final pubspecFile = File('pubspec.yaml');
   if (pubspecFile.existsSync()) {
     final lines = pubspecFile.readAsLinesSync();
@@ -56,24 +42,34 @@ void main() async {
     }
   }
 
-  // 4. Copy build/app/outputs/flutter-apk/app-release.apk to the custom name
-  final srcFile = File('build/app/outputs/flutter-apk/app-release.apk');
-  if (srcFile.existsSync()) {
-    final newName = 'Mobiz Auto Care Pro $country V $version.apk';
-    final destFile = File('build/app/outputs/flutter-apk/$newName');
+  final finalName = 'Mobiz auto care pro v $version.apk';
+  final dir = Directory('build/app/outputs/flutter-apk');
+  final destFile = File('${dir.path}/$finalName');
 
-    // Copy to destination
-    srcFile.copySync(destFile.path);
+  // Handle various potential output names from gradle
+  if (!destFile.existsSync() && dir.existsSync()) {
+    final appRelease = File('${dir.path}/app-release.apk');
+    if (appRelease.existsSync()) {
+      appRelease.copySync(destFile.path);
+    } else {
+      final apks = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.apk')).toList();
+      apks.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      if (apks.isNotEmpty) {
+        apks.first.copySync(destFile.path);
+      }
+    }
+  }
 
+  if (destFile.existsSync()) {
     print('');
     print('═══════════════════════════════════════════════════════');
-    print('🎉 APK Built & Renamed Successfully!');
+    print('🎉 APK Built & Ready!');
     print('═══════════════════════════════════════════════════════');
-    print('📂 Filename: $newName');
+    print('📂 Filename: $finalName');
     print('📂 Location: ${destFile.path}');
     print('═══════════════════════════════════════════════════════');
     print('');
   } else {
-    print('❌ Error: Could not locate app-release.apk at ${srcFile.path}');
+    print('❌ Error: Could not locate built APK in ${dir.path}');
   }
 }

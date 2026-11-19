@@ -1,4 +1,4 @@
-package com.mobiz.carwash
+package com.mobizautocarepro
 
 import io.flutter.embedding.android.FlutterActivity
 

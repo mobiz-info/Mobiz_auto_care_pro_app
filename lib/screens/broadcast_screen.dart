@@ -23,8 +23,12 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   final ValueNotifier<String> _errorMessageNotifier = ValueNotifier('');
 
   final ValueNotifier<List<dynamic>> _allCustomersNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _inactiveCustomersNotifier = ValueNotifier([]);
-  final ValueNotifier<List<dynamic>> _filteredCustomersNotifier = ValueNotifier([]);
+  final ValueNotifier<List<dynamic>> _inactiveCustomersNotifier = ValueNotifier(
+    [],
+  );
+  final ValueNotifier<List<dynamic>> _filteredCustomersNotifier = ValueNotifier(
+    [],
+  );
   final ValueNotifier<List<dynamic>> _templatesNotifier = ValueNotifier([]);
   final ValueNotifier<dynamic> _selectedTemplateNotifier = ValueNotifier(null);
 
@@ -32,20 +36,30 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   final ValueNotifier<int> _inactiveFilterNotifier = ValueNotifier(0);
 
   // Sending state per customer ID
-  final ValueNotifier<Set<String>> _sendingCustomerIdsNotifier = ValueNotifier({});
+  final ValueNotifier<Set<String>> _sendingCustomerIdsNotifier = ValueNotifier(
+    {},
+  );
 
   // Reminders state
   final ValueNotifier<List<dynamic>> _reminderPlansNotifier = ValueNotifier([]);
-  final ValueNotifier<bool> _isLoadingReminderPlansNotifier = ValueNotifier(false);
-  final ValueNotifier<DateTime> _selectedReminderDateNotifier = ValueNotifier(DateTime.now());
-  final ValueNotifier<Set<String>> _sendingSinglePlanIdsNotifier = ValueNotifier({});
-  final ValueNotifier<bool> _isSendingBulkRemindersNotifier = ValueNotifier(false);
+  final ValueNotifier<bool> _isLoadingReminderPlansNotifier = ValueNotifier(
+    false,
+  );
+  final ValueNotifier<DateTime> _selectedReminderDateNotifier = ValueNotifier(
+    DateTime.now(),
+  );
+  final ValueNotifier<Set<String>> _sendingSinglePlanIdsNotifier =
+      ValueNotifier({});
+  final ValueNotifier<bool> _isSendingBulkRemindersNotifier = ValueNotifier(
+    false,
+  );
 
   // Controllers
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _var2Controller = TextEditingController();
-  final TextEditingController _reminderSearchController = TextEditingController();
+  final TextEditingController _reminderSearchController =
+      TextEditingController();
 
   // Bulk sending state
   final ValueNotifier<bool> _isSendingNotifier = ValueNotifier(false);
@@ -108,7 +122,8 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       if (res['success'] == true) {
         _inactiveCustomersNotifier.value = res['customers'] ?? [];
       }
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       _filterCustomersList();
       _isLoadingNotifier.value = false;
     }
@@ -124,7 +139,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     if (query.isNotEmpty) {
       source = source.where((c) {
         final name = (c['name'] ?? '').toString().toLowerCase();
-        final phone = (c['phone'] ?? c['whatsapp_number'] ?? '').toString().toLowerCase();
+        final phone = (c['phone'] ?? c['whatsapp_number'] ?? '')
+            .toString()
+            .toLowerCase();
         return name.contains(query) || phone.contains(query);
       }).toList();
     }
@@ -143,7 +160,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     final var2Val = _var2Controller.text.trim();
 
     if (msgTemplate.isEmpty) {
-      _showSnack(context, context.tr('Please select a template or enter a message first.'), Colors.orange);
+      _showSnack(
+        context,
+        context.tr('Please select a template or enter a message first.'),
+        Colors.orange,
+      );
       return;
     }
 
@@ -157,7 +178,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     _sendingCustomerIdsNotifier.value = sendingSet;
 
     try {
-      final templateName = template != null ? (template['wawy_template_name'] ?? '').toString() : '';
+      final templateName = template != null
+          ? (template['wawy_template_name'] ?? '').toString()
+          : '';
 
       final res = await ApiService.sendWhatsAppBroadcast(
         token,
@@ -169,7 +192,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       );
 
       if (res['success'] == true && (res['sent'] ?? 0) > 0) {
-        _showSnack(context, '${context.tr("Message sent to")} $custName ${context.tr("via WhatsApp API!")}', Colors.green);
+        _showSnack(
+          context,
+          '${context.tr("Message sent to")} $custName ${context.tr("via WhatsApp API!")}',
+          Colors.green,
+        );
       } else {
         await _launchWhatsAppDirect(context, customer, msgTemplate, var2Val);
       }
@@ -189,31 +216,47 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     String var2,
   ) async {
     final custName = (customer['name'] ?? '').toString();
-    final custPhone = (customer['phone'] ?? customer['whatsapp_number'] ?? '').toString();
+    final custPhone = (customer['phone'] ?? customer['whatsapp_number'] ?? '')
+        .toString();
     final branchName = context.read<AuthProvider>().branchName ?? 'our branch';
 
     String text = rawMsg
         .replaceAll('{{1}}', custName)
         .replaceAll('{{2}}', var2)
-        .replaceAll('{{3}}', (customer['vehicle_number'] ?? customer['vehicles'] ?? '').toString())
+        .replaceAll(
+          '{{3}}',
+          (customer['vehicle_number'] ?? customer['vehicles'] ?? '').toString(),
+        )
         .replaceAll('{{4}}', custPhone)
         .replaceAll('{{5}}', branchName);
 
     final cleanedPhone = CountryConfig.formatPhoneForWhatsapp(custPhone);
     if (cleanedPhone.isEmpty) {
-      _showSnack(context, context.tr('Invalid phone number for customer.'), Colors.red);
+      _showSnack(
+        context,
+        context.tr('Invalid phone number for customer.'),
+        Colors.red,
+      );
       return;
     }
 
     final whatsappUrl = Uri.parse(
-      "https://wa.me/$cleanedPhone?text=${Uri.encodeComponent(text)}"
+      "https://wa.me/$cleanedPhone?text=${Uri.encodeComponent(text)}",
     );
 
     try {
       await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
-      _showSnack(context, '${context.tr("Opened WhatsApp chat for")} $custName', Colors.green);
+      _showSnack(
+        context,
+        '${context.tr("Opened WhatsApp chat for")} $custName',
+        Colors.green,
+      );
     } catch (e) {
-      _showSnack(context, '${context.tr("Could not launch WhatsApp:")} $e', Colors.red);
+      _showSnack(
+        context,
+        '${context.tr("Could not launch WhatsApp:")} $e',
+        Colors.red,
+      );
     }
   }
 
@@ -222,12 +265,20 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     final filteredCustomers = _filteredCustomersNotifier.value;
 
     if (msg.isEmpty) {
-      _showSnack(context, context.tr('Please select a template or enter a message.'), Colors.orange);
+      _showSnack(
+        context,
+        context.tr('Please select a template or enter a message.'),
+        Colors.orange,
+      );
       return;
     }
 
     if (filteredCustomers.isEmpty) {
-      _showSnack(context, context.tr('No customers to send to.'), Colors.orange);
+      _showSnack(
+        context,
+        context.tr('No customers to send to.'),
+        Colors.orange,
+      );
       return;
     }
 
@@ -236,11 +287,16 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          const Icon(Icons.send, color: Color(0xFF25D366)),
-          const SizedBox(width: 10),
-          Text(ctx.tr('Confirm Send'), style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        ]),
+        title: Row(
+          children: [
+            const Icon(Icons.send, color: Color(0xFF25D366)),
+            const SizedBox(width: 10),
+            Text(
+              ctx.tr('Confirm Send'),
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
         content: Text(
           ctx.tr('Send WhatsApp message to $count customer(s)?'),
           style: GoogleFonts.inter(fontSize: 14.sp),
@@ -248,15 +304,26 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.tr('Cancel'), style: const TextStyle(color: Colors.grey)),
+            child: Text(
+              ctx.tr('Cancel'),
+              style: TextStyle(color: Colors.grey),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Color(0xFF25D366),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: Text(ctx.tr('Send Now'), style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              ctx.tr('Send Now'),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -267,7 +334,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     _isSendingNotifier.value = true;
     final token = context.read<AuthProvider>().token!;
     final template = _selectedTemplateNotifier.value;
-    final customerIds = filteredCustomers.map((c) => (c['id'] ?? '').toString()).toList();
+    final customerIds = filteredCustomers
+        .map((c) => (c['id'] ?? '').toString())
+        .toList();
 
     try {
       final broadcastProvider = context.read<BroadcastProvider>();
@@ -279,7 +348,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         var1: '',
         var2: _var2Controller.text.trim(),
         customMessage: msg,
-        templateName: template != null ? (template['wawy_template_name'] ?? '').toString() : '',
+        templateName: template != null
+            ? (template['wawy_template_name'] ?? '').toString()
+            : '',
       );
 
       _isSendingNotifier.value = false;
@@ -287,7 +358,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       if (result['success'] == true) {
         _showResultDialog(context, result);
       } else {
-        _showSnack(context, result['message'] ?? context.tr('Failed to send'), Colors.red);
+        _showSnack(
+          context,
+          result['message'] ?? context.tr('Failed to send'),
+          Colors.red,
+        );
       }
     } catch (e) {
       _isSendingNotifier.value = false;
@@ -301,45 +376,193 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
 
     _isLoadingReminderPlansNotifier.value = true;
     final broadcastProvider = context.read<BroadcastProvider>();
-    broadcastProvider.setSelectedReminderDate(_selectedReminderDateNotifier.value);
+    broadcastProvider.setSelectedReminderDate(
+      _selectedReminderDateNotifier.value,
+    );
     await broadcastProvider.fetchReminderPlans(token);
 
     _reminderPlansNotifier.value = broadcastProvider.reminderPlans;
     _isLoadingReminderPlansNotifier.value = false;
   }
 
-  String _buildReminderMessageText(BuildContext context, dynamic plan, String branchName) {
+  String _buildReminderMessageText(
+    BuildContext context,
+    dynamic plan,
+    String branchName,
+  ) {
     final custName = (plan['customer_name'] ?? 'Customer').toString();
-    final vehicleNum = (plan['vehicle_number'] ?? 'your vehicle').toString();
+    final vehicleNum =
+        (plan['vehicle_number'] ??
+                plan['vehicle_display'] ??
+                plan['vehicle_details'] ??
+                'your vehicle')
+            .toString();
     final serviceName = (plan['service_name'] ?? 'service').toString();
+    final serviceCat = (plan['service_category'] ?? '')
+        .toString()
+        .toLowerCase();
+    final tmplName = (plan['template_name'] ?? '').toString().toLowerCase();
 
-    final nextKm = plan['next_alignment_km'] ??
+    String resolvedBranch = branchName.trim();
+    if (resolvedBranch.isEmpty && plan is Map) {
+      resolvedBranch = (plan['branch_name'] ?? plan['branch'] ?? plan['branch_display'] ?? '').toString().trim();
+    }
+    if (resolvedBranch.isEmpty) {
+      final authBranch = context.read<AuthProvider>().branchName?.trim() ?? '';
+      final companyName = context.read<AuthProvider>().companyName?.trim() ?? '';
+      if (authBranch.isNotEmpty) {
+        resolvedBranch = authBranch;
+      } else if (companyName.isNotEmpty) {
+        resolvedBranch = companyName;
+      } else {
+        resolvedBranch = 'Mobiz Auto Care Pro';
+      }
+    }
+
+    if (serviceCat.contains('insurance') ||
+        tmplName == 'insurancereminder' ||
+        serviceName.toLowerCase().contains('insurance')) {
+      final serviceDetails = plan['service_details'] is Map
+          ? plan['service_details'] as Map
+          : const <dynamic, dynamic>{};
+      final expiryValue =
+          plan['insurance_expiry_date'] ??
+          plan['expiry_date'] ??
+          plan['insurance_expiry'] ??
+          plan['formatted_expiry'] ??
+          serviceDetails['insurance_expiry_date'];
+      final expiryDate = _formatReminderDate(expiryValue);
+      String insService = serviceName.trim().isNotEmpty && serviceName.toLowerCase() != 'service' ? serviceName.trim() : 'Insurance';
+      if (insService.toLowerCase().endsWith(' policy')) {
+        insService = insService.substring(0, insService.length - 7).trim();
+      }
+      return "Dear $custName, $insService policy expiry reminder.\nExpiry date: $expiryDate\nKindly contact for the renewal.\n$resolvedBranch support team";
+    }
+
+    if (serviceCat.contains('smoke') ||
+        tmplName == 'smoketest' ||
+        serviceName.toLowerCase().contains('smoke') ||
+        serviceName.toLowerCase().contains('pollution')) {
+      final serviceDetails = plan['service_details'] is Map
+          ? plan['service_details'] as Map
+          : const <dynamic, dynamic>{};
+      final dueValue =
+          plan['smoke_due_date'] ??
+          plan['due_date'] ??
+          plan['next_smoke_test_date'] ??
+          serviceDetails['next_smoke_test_date'];
+
+      String dueDateStr = _formatReminderDate(dueValue);
+      if (dueDateStr == 'N/A' || dueValue == null) {
+        final schedDate = DateTime.tryParse((plan['scheduled_date'] ?? '').toString());
+        if (schedDate != null) {
+          final rNo = plan['reminder_no'] ?? 1;
+          final addDays = (rNo == 1 || rNo == '1') ? 15 : 3;
+          final calcDue = schedDate.add(Duration(days: addDays));
+          dueDateStr = "${calcDue.day.toString().padLeft(2, '0')}-${calcDue.month.toString().padLeft(2, '0')}-${calcDue.year}";
+        }
+      }
+      return "Hi $custName, Your vehicle $vehicleNum’s Smoke Test is due for renewal on $dueDateStr. Please visit $resolvedBranch to renew it before the due date.";
+    }
+
+    if (serviceCat.contains('oil') ||
+        tmplName == 'oilreminder' ||
+        serviceName.toLowerCase().contains('oil')) {
+      final nextKm = plan['next_oil_change_km'] ??
+          (plan['service_details'] is Map
+              ? plan['service_details']['next_oil_change_km']
+              : null) ??
+          plan['next_km'] ??
+          'N/A';
+      final kmStr = nextKm.toString().trim();
+      final kmVal = kmStr.isNotEmpty && kmStr != 'null' ? kmStr : 'N/A';
+      return "Dear $custName your vehicle no $vehicleNum next oil change to be done on $kmVal km. Visit $resolvedBranch for a smooth ride.";
+    }
+
+    if (plan is Map &&
+        plan['message'] != null &&
+        plan['message'].toString().trim().isNotEmpty) {
+      String msg = plan['message'].toString().trim();
+      if (msg.contains("Visit  to renew") || msg.contains("Visit to renew")) {
+        msg = msg.replaceAll("Visit  to renew", "Visit $resolvedBranch to renew")
+                 .replaceAll("Visit to renew", "Visit $resolvedBranch to renew");
+      }
+      if (msg.contains("Visit  for a smooth ride")) {
+        msg = msg.replaceAll("Visit  for a smooth ride", "Visit $resolvedBranch for a smooth ride");
+      }
+      return msg;
+    }
+
+    final nextKm =
+        plan['next_alignment_km'] ??
         plan['next_oil_change_km'] ??
         plan['next_km'] ??
         plan['due_km'] ??
         plan['next_tyre_change_km'] ??
-        (plan['service_details'] is Map ? plan['service_details']['next_alignment_km'] : null) ??
-        (plan['service_details'] is Map ? plan['service_details']['next_oil_change_km'] : null) ??
+        (plan['service_details'] is Map
+            ? plan['service_details']['next_alignment_km']
+            : null) ??
+        (plan['service_details'] is Map
+            ? plan['service_details']['next_oil_change_km']
+            : null) ??
         '';
 
     final kmStr = nextKm.toString().trim();
     final kmText = kmStr.isNotEmpty && kmStr != 'null' ? ' at $kmStr KM' : '';
 
-    return "Dear $custName, your vehicle $vehicleNum is due for $serviceName$kmText. Visit $branchName for a smooth ride.";
+    return "Dear $custName, your vehicle $vehicleNum is due for $serviceName$kmText. Visit $resolvedBranch for a smooth ride.";
   }
 
-  Future<void> _launchDirectWhatsAppReminder(BuildContext context, dynamic plan) async {
+  String _formatReminderDate(dynamic value) {
+    if (value == null || value.toString().trim().isEmpty) return 'N/A';
+
+    final str = value.toString().trim();
+    final ddmmyyyyRegex = RegExp(r'^\d{2}-\d{2}-\d{4}$');
+    if (ddmmyyyyRegex.hasMatch(str)) {
+      return str;
+    }
+
+    final parsed = DateTime.tryParse(str);
+    if (parsed == null) return str;
+
+    return '${parsed.day.toString().padLeft(2, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.year}';
+  }
+
+  Future<void> _launchDirectWhatsAppReminder(
+    BuildContext context,
+    dynamic plan,
+  ) async {
     final custPhone = (plan['customer_phone'] ?? '').toString();
-    final branchName = context.read<AuthProvider>().branchName ?? 'Mobiz Auto Care Pro';
+    String branchName = '';
+    if (plan is Map) {
+      branchName = (plan['branch_name'] ?? plan['branch'] ?? plan['branch_display'] ?? '').toString().trim();
+    }
+    if (branchName.isEmpty) {
+      final authBranch = context.read<AuthProvider>().branchName?.trim() ?? '';
+      final companyName = context.read<AuthProvider>().companyName?.trim() ?? '';
+      if (authBranch.isNotEmpty) {
+        branchName = authBranch;
+      } else if (companyName.isNotEmpty) {
+        branchName = companyName;
+      } else {
+        branchName = 'Mobiz Auto Care Pro';
+      }
+    }
     final text = _buildReminderMessageText(context, plan, branchName);
 
     final cleanedPhone = CountryConfig.formatPhoneForWhatsapp(custPhone);
     if (cleanedPhone.isEmpty) {
-      _showSnack(context, context.tr('Invalid phone number for customer.'), Colors.red);
+      _showSnack(
+        context,
+        context.tr('Invalid phone number for customer.'),
+        Colors.red,
+      );
       return;
     }
 
-    final whatsappUrl = Uri.parse("https://wa.me/$cleanedPhone?text=${Uri.encodeComponent(text)}");
+    final whatsappUrl = Uri.parse(
+      "https://wa.me/$cleanedPhone?text=${Uri.encodeComponent(text)}",
+    );
 
     try {
       await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
@@ -347,14 +570,24 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       final planId = (plan['id'] ?? '').toString();
       if (token != null && planId.isNotEmpty) {
         await ApiService.sendReminders(token, [planId], action: 'mark_sent');
-        _reminderPlansNotifier.value = context.read<BroadcastProvider>().reminderPlans;
+        _reminderPlansNotifier.value = context
+            .read<BroadcastProvider>()
+            .reminderPlans;
       }
       if (context.mounted) {
-        _showSnack(context, context.tr('Opened prefilled WhatsApp chat window.'), Colors.green);
+        _showSnack(
+          context,
+          context.tr('Opened prefilled WhatsApp chat window.'),
+          Colors.green,
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        _showSnack(context, '${context.tr("Could not launch WhatsApp:")} $e', Colors.red);
+        _showSnack(
+          context,
+          '${context.tr("Could not launch WhatsApp:")} $e',
+          Colors.red,
+        );
       }
     }
   }
@@ -381,17 +614,31 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       if (!context.mounted) return;
 
       if (res['success'] == true || res['status'] == 'success') {
-        _showSnack(context, context.tr('Reminder sent successfully!'), Colors.green);
+        _showSnack(
+          context,
+          context.tr('Reminder sent successfully!'),
+          Colors.green,
+        );
         _reminderPlansNotifier.value = broadcastProvider.reminderPlans;
       } else {
-        _showSnack(context, res['message'] ?? context.tr('Failed to send reminder.'), Colors.red);
+        _showSnack(
+          context,
+          res['message'] ?? context.tr('Failed to send reminder.'),
+          Colors.red,
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        _showSnack(context, '${context.tr("Failed to send reminder:")} $e', Colors.red);
+        _showSnack(
+          context,
+          '${context.tr("Failed to send reminder:")} $e',
+          Colors.red,
+        );
       }
     } finally {
-      final finalSendingIds = Set<String>.from(_sendingSinglePlanIdsNotifier.value);
+      final finalSendingIds = Set<String>.from(
+        _sendingSinglePlanIdsNotifier.value,
+      );
       finalSendingIds.remove(planId);
       _sendingSinglePlanIdsNotifier.value = finalSendingIds;
     }
@@ -402,7 +649,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     final selectedReminderIds = broadcastProvider.selectedReminderIds;
 
     if (selectedReminderIds.isEmpty) {
-      _showSnack(context, context.tr('Please select at least one client to send reminders.'), Colors.orange);
+      _showSnack(
+        context,
+        context.tr('Please select at least one client to send reminders.'),
+        Colors.orange,
+      );
       return;
     }
 
@@ -410,11 +661,16 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          const Icon(Icons.send, color: Color(0xFF000080)),
-          const SizedBox(width: 10),
-          Text(ctx.tr('Confirm Send'), style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        ]),
+        title: Row(
+          children: [
+            const Icon(Icons.send, color: Color(0xFF000080)),
+            const SizedBox(width: 10),
+            Text(
+              ctx.tr('Confirm Send'),
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
         content: Text(
           ctx.tr('Send selected ${selectedReminderIds.length} reminder(s)?'),
           style: GoogleFonts.inter(fontSize: 14.sp),
@@ -422,15 +678,26 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.tr('Cancel'), style: const TextStyle(color: Colors.grey)),
+            child: Text(
+              ctx.tr('Cancel'),
+              style: TextStyle(color: Colors.grey),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Color(0xFF000080),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: Text(ctx.tr('Send'), style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              ctx.tr('Send'),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -450,10 +717,18 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
 
       if (res['success'] == true) {
         final sent = res['sent_count'] ?? 0;
-        _showSnack(context, context.tr('Successfully sent $sent reminder(s)!'), Colors.green);
+        _showSnack(
+          context,
+          context.tr('Successfully sent $sent reminder(s)!'),
+          Colors.green,
+        );
         _reminderPlansNotifier.value = broadcastProvider.reminderPlans;
       } else {
-        _showSnack(context, res['message'] ?? context.tr('Failed to send selected reminders.'), Colors.red);
+        _showSnack(
+          context,
+          res['message'] ?? context.tr('Failed to send selected reminders.'),
+          Colors.red,
+        );
       }
     } catch (e) {
       if (context.mounted) _showSnack(context, e.toString(), Colors.red);
@@ -472,14 +747,19 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          Icon(sent > 0 ? Icons.check_circle : Icons.error, color: sent > 0 ? Colors.green : Colors.red),
-          SizedBox(width: 10),
-          Text(
-            sent > 0 ? ctx.tr('Messages Sent!') : ctx.tr('Send Failed'),
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-          ),
-        ]),
+        title: Row(
+          children: [
+            Icon(
+              sent > 0 ? Icons.check_circle : Icons.error,
+              color: sent > 0 ? Colors.green : Colors.red,
+            ),
+            SizedBox(width: 10),
+            Text(
+              sent > 0 ? ctx.tr('Messages Sent!') : ctx.tr('Send Failed'),
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -488,18 +768,35 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
               children: [
                 _statChip(ctx, '$sent', ctx.tr('Sent'), Colors.green),
                 SizedBox(width: 12),
-                if (failed > 0) _statChip(ctx, '$failed', ctx.tr('Failed'), Colors.red),
+                if (failed > 0)
+                  _statChip(ctx, '$failed', ctx.tr('Failed'), Colors.red),
               ],
             ),
             if (errors.isNotEmpty) ...[
               SizedBox(height: 12),
-              Text(ctx.tr('Issues:'), style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13.sp)),
+              Text(
+                ctx.tr('Issues:'),
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13.sp,
+                ),
+              ),
               SizedBox(height: 6),
-              ...errors.take(5).map((e) => Padding(
-                    padding: EdgeInsets.only(bottom: 4),
-                    child: Text('• $e', style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.red.shade700)),
-                  )),
-            ]
+              ...errors
+                  .take(5)
+                  .map(
+                    (e) => Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '• $e',
+                        style: GoogleFonts.inter(
+                          fontSize: 12.sp,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
           ],
         ),
         actions: [
@@ -515,16 +812,26 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Color(0xFF000080),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: Text(ctx.tr('Done'), style: GoogleFonts.inter(color: Colors.white)),
+            child: Text(
+              ctx.tr('Done'),
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _statChip(BuildContext context, String value, String label, Color color) {
+  Widget _statChip(
+    BuildContext context,
+    String value,
+    String label,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -534,17 +841,27 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       ),
       child: Column(
         children: [
-          Text(value, style: GoogleFonts.inter(fontSize: 22.sp, fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: GoogleFonts.inter(fontSize: 12.sp, color: color)),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 22.sp,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.inter(fontSize: 12.sp, color: color),
+          ),
         ],
       ),
     );
   }
 
   void _showSnack(BuildContext context, String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: color),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
   }
 
   @override
@@ -554,7 +871,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       child: Scaffold(
         backgroundColor: Color(0xFFF1F5F9),
         appBar: AppBar(
-          title: Text(context.tr('Notifications'), style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          title: Text(
+            context.tr('Notifications'),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
           backgroundColor: Color(0xFF000080),
           foregroundColor: Colors.white,
           bottom: TabBar(
@@ -562,10 +882,16 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             indicatorWeight: 3,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
-            labelStyle: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.bold),
+            labelStyle: GoogleFonts.inter(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.bold,
+            ),
             tabs: [
               Tab(icon: Icon(Icons.people, size: 20), text: context.tr('All')),
-              Tab(icon: Icon(Icons.notifications_active, size: 20), text: context.tr('Reminders')),
+              Tab(
+                icon: Icon(Icons.notifications_active, size: 20),
+                text: context.tr('Reminders'),
+              ),
             ],
           ),
         ),
@@ -580,7 +906,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
               valueListenable: _errorMessageNotifier,
               builder: (context, errorMsg, child) {
                 if (errorMsg.isNotEmpty) {
-                  return Center(child: Text(errorMsg, style: TextStyle(color: Colors.red)));
+                  return Center(
+                    child: Text(errorMsg, style: TextStyle(color: Colors.red)),
+                  );
                 }
 
                 return TabBarView(
@@ -612,9 +940,19 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.person_off_outlined, size: 16, color: Colors.orange.shade800),
+                  Icon(
+                    Icons.person_off_outlined,
+                    size: 16,
+                    color: Colors.orange.shade800,
+                  ),
                   SizedBox(width: 6),
-                  Text(context.tr('Inactive for:'), style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+                  Text(
+                    context.tr('Inactive for:'),
+                    style: GoogleFonts.inter(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: SingleChildScrollView(
@@ -626,11 +964,23 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                             children: [
                               _filterChip(context, 0, context.tr('All')),
                               const SizedBox(width: 6),
-                              _filterChip(context, 30, '30 ${context.tr("Days")}'),
+                              _filterChip(
+                                context,
+                                30,
+                                '30 ${context.tr("Days")}',
+                              ),
                               const SizedBox(width: 6),
-                              _filterChip(context, 60, '60 ${context.tr("Days")}'),
+                              _filterChip(
+                                context,
+                                60,
+                                '60 ${context.tr("Days")}',
+                              ),
                               const SizedBox(width: 6),
-                              _filterChip(context, 90, '90 ${context.tr("Days")}'),
+                              _filterChip(
+                                context,
+                                90,
+                                '90 ${context.tr("Days")}',
+                              ),
                             ],
                           );
                         },
@@ -658,7 +1008,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                   filled: true,
                   fillColor: const Color(0xFFF1F5F9),
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ],
@@ -674,7 +1027,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 return Center(
                   child: Text(
                     context.tr('No customers found.'),
-                    style: GoogleFonts.inter(color: Colors.grey, fontWeight: FontWeight.w600),
+                    style: GoogleFonts.inter(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 );
               }
@@ -682,7 +1038,8 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 itemCount: filteredCustomers.length,
-                itemBuilder: (_, i) => _customerRowTile(context, filteredCustomers[i]),
+                itemBuilder: (_, i) =>
+                    _customerRowTile(context, filteredCustomers[i]),
               );
             },
           ),
@@ -715,25 +1072,48 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                     children: [
                       Text(
                         context.tr('1. Select Template'),
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp, color: Color(0xFF000080)),
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12.sp,
+                          color: Color(0xFF000080),
+                        ),
                       ),
                       SizedBox(height: 5),
                       DropdownButtonFormField<dynamic>(
                         value: selectedTemplate,
                         isExpanded: true,
                         decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           filled: true,
                           fillColor: Color(0xFFF8FAFC),
                         ),
-                        hint: Text(context.tr('-- Select a template --'), style: GoogleFonts.inter(fontSize: 13.sp)),
+                        hint: Text(
+                          context.tr('-- Select a template --'),
+                          style: GoogleFonts.inter(fontSize: 13.sp),
+                        ),
                         items: [
-                          DropdownMenuItem(value: null, child: Text(context.tr('-- Select a template --'), style: GoogleFonts.inter(fontSize: 13.sp))),
-                          ...templates.map((t) => DropdownMenuItem(
-                                value: t,
-                                child: Text(t['name'] ?? '', style: GoogleFonts.inter(fontSize: 13.sp)),
-                              )),
+                          DropdownMenuItem(
+                            value: null,
+                            child: Text(
+                              context.tr('-- Select a template --'),
+                              style: GoogleFonts.inter(fontSize: 13.sp),
+                            ),
+                          ),
+                          ...templates.map(
+                            (t) => DropdownMenuItem(
+                              value: t,
+                              child: Text(
+                                t['name'] ?? '',
+                                style: GoogleFonts.inter(fontSize: 13.sp),
+                              ),
+                            ),
+                          ),
                         ],
                         onChanged: (val) {
                           _applyTemplate(val);
@@ -749,13 +1129,20 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 SizedBox(height: 12),
                 Text(
                   context.tr('2. Message Autofill'),
-                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp, color: Color(0xFF000080)),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.sp,
+                    color: Color(0xFF000080),
+                  ),
                 ),
                 SizedBox(height: 5),
                 if (hasVar2) ...[
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFFBEB),
                       border: Border.all(color: const Color(0xFFFCD34D)),
@@ -764,12 +1151,22 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: Color(0xFF000080),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text('{{2}}', style: TextStyle(color: Colors.white, fontSize: 11.sp, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            '{{2}}',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                         SizedBox(width: 10),
                         Expanded(
@@ -777,7 +1174,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                             controller: _var2Controller,
                             style: GoogleFonts.inter(fontSize: 13.sp),
                             decoration: InputDecoration(
-                              hintText: context.tr('Free Service / Offer / Festival Name...'),
+                              hintText: context.tr(
+                                'Free Service / Offer / Festival Name...',
+                              ),
                               border: InputBorder.none,
                               isDense: true,
                             ),
@@ -793,7 +1192,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                   style: GoogleFonts.inter(fontSize: 13.sp),
                   decoration: InputDecoration(
                     hintText: context.tr('Template content...'),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
                   ),
@@ -801,7 +1202,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 SizedBox(height: 4),
                 Text(
                   '{{1}}=Name  {{2}}=Offer  {{3}}=Vehicle  {{4}}=Phone  {{5}}=Branch',
-                  style: GoogleFonts.inter(fontSize: 10.sp, color: Colors.grey.shade400),
+                  style: GoogleFonts.inter(
+                    fontSize: 10.sp,
+                    color: Colors.grey.shade400,
+                  ),
                 ),
               ],
             ],
@@ -820,7 +1224,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF000080) : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? const Color(0xFF000080) : Colors.grey.shade300),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF000080) : Colors.grey.shade300,
+          ),
         ),
         child: Text(
           label,
@@ -858,7 +1264,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor: const Color(0xFFEFF6FF),
-                  child: Icon(Icons.person, color: const Color(0xFF000080), size: 20),
+                  child: Icon(
+                    Icons.person,
+                    color: const Color(0xFF000080),
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -867,29 +1277,54 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                     children: [
                       Text(
                         name,
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13.sp, color: Color(0xFF1E293B)),
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13.sp,
+                          color: Color(0xFF1E293B),
+                        ),
                       ),
                       SizedBox(height: 2),
                       Text(
                         phone,
-                        style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade600),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: isSendingThis ? null : () => _sendToCustomer(context, customer),
+                  onPressed: isSendingThis
+                      ? null
+                      : () => _sendToCustomer(context, customer),
                   icon: isSendingThis
-                      ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : Icon(Icons.send, size: 14, color: Colors.white),
                   label: Text(
                     context.tr('Send'),
-                    style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: GoogleFonts.inter(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF25D366),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     elevation: 0,
                   ),
                 ),
@@ -913,16 +1348,27 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
               builder: (context, isSending, child) {
                 final count = _filteredCustomersNotifier.value.length;
                 return ElevatedButton.icon(
-                  onPressed: isSending ? null : () => _sendBulkBroadcast(context),
+                  onPressed: isSending
+                      ? null
+                      : () => _sendBulkBroadcast(context),
                   icon: isSending
-                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : Icon(Icons.send, color: Colors.white),
                   label: Text("${context.tr('Send All')} ($count)"),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF000080),
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 );
               },
@@ -943,21 +1389,26 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       final phone = (p['customer_phone'] ?? '').toString().toLowerCase();
       final vehicleNum = (p['vehicle_number'] ?? '').toString().toLowerCase();
       final serviceName = (p['service_name'] ?? '').toString().toLowerCase();
-      return name.contains(query) || phone.contains(query) || vehicleNum.contains(query) || serviceName.contains(query);
+      return name.contains(query) ||
+          phone.contains(query) ||
+          vehicleNum.contains(query) ||
+          serviceName.contains(query);
     }).toList();
   }
 
   Widget _buildRemindersTab(BuildContext context) {
     final broadcastProvider = context.watch<BroadcastProvider>();
     final selectedReminderIds = broadcastProvider.selectedReminderIds;
-    final isShowAll = broadcastProvider.showAllReminders;
 
     return ValueListenableBuilder<List<dynamic>>(
       valueListenable: _reminderPlansNotifier,
       builder: (context, reminderPlans, child) {
         final filteredPlans = _filteredReminderPlans();
-        final allSelected = filteredPlans.isNotEmpty &&
-            filteredPlans.every((p) => selectedReminderIds.contains(p['id']?.toString()));
+        final allSelected =
+            filteredPlans.isNotEmpty &&
+            filteredPlans.every(
+              (p) => selectedReminderIds.contains(p['id']?.toString()),
+            );
 
         return Column(
           children: [
@@ -969,11 +1420,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 valueListenable: _selectedReminderDateNotifier,
                 builder: (context, selectedReminderDate, child) {
                   final now = DateTime.now();
-                  final isTodaySelected = !isShowAll &&
+                  final isTodaySelected =
                       selectedReminderDate.year == now.year &&
                       selectedReminderDate.month == now.month &&
                       selectedReminderDate.day == now.day;
-                  final isCustomDateSelected = !isShowAll && !isTodaySelected;
+                  final isCustomDateSelected = !isTodaySelected;
 
                   final formattedCustomDate =
                       "${selectedReminderDate.day.toString().padLeft(2, '0')}/${selectedReminderDate.month.toString().padLeft(2, '0')}/${selectedReminderDate.year}";
@@ -992,7 +1443,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                             onTap: () {
                               final today = DateTime.now();
                               _selectedReminderDateNotifier.value = today;
-                              context.read<BroadcastProvider>().setSelectedReminderDate(today);
+                              context
+                                  .read<BroadcastProvider>()
+                                  .setSelectedReminderDate(today);
                               _fetchReminderPlans(context);
                             },
                             borderRadius: BorderRadius.circular(9),
@@ -1000,29 +1453,43 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                               duration: const Duration(milliseconds: 180),
                               padding: const EdgeInsets.symmetric(vertical: 9),
                               decoration: BoxDecoration(
-                                color: isTodaySelected ? const Color(0xFF000080) : Colors.transparent,
+                                color: isTodaySelected
+                                    ? const Color(0xFF000080)
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.circular(9),
                                 boxShadow: isTodaySelected
                                     ? [
                                         BoxShadow(
-                                          color: const Color(0xFF000080).withValues(alpha: 0.2),
+                                          color: const Color(
+                                            0xFF000080,
+                                          ).withValues(alpha: 0.2),
                                           blurRadius: 6,
                                           offset: const Offset(0, 2),
-                                        )
+                                        ),
                                       ]
                                     : [],
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.today, size: 14.r, color: isTodaySelected ? Colors.white : const Color(0xFF64748B)),
+                                  Icon(
+                                    Icons.today,
+                                    size: 14.r,
+                                    color: isTodaySelected
+                                        ? Colors.white
+                                        : const Color(0xFF64748B),
+                                  ),
                                   const SizedBox(width: 5),
                                   Text(
                                     context.tr('Today'),
                                     style: GoogleFonts.inter(
                                       fontSize: 12.sp,
-                                      fontWeight: isTodaySelected ? FontWeight.w700 : FontWeight.w600,
-                                      color: isTodaySelected ? Colors.white : const Color(0xFF64748B),
+                                      fontWeight: isTodaySelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                      color: isTodaySelected
+                                          ? Colors.white
+                                          : const Color(0xFF64748B),
                                     ),
                                   ),
                                 ],
@@ -1030,7 +1497,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 6),
 
                         // Select Date Pill
                         Expanded(
@@ -1038,89 +1505,72 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                             onTap: () async {
                               final picked = await showDatePicker(
                                 context: context,
-                                initialDate: _selectedReminderDateNotifier.value,
+                                initialDate:
+                                    _selectedReminderDateNotifier.value,
                                 firstDate: DateTime(2020),
                                 lastDate: DateTime(2100),
                               );
                               if (picked != null) {
                                 _selectedReminderDateNotifier.value = picked;
-                                context.read<BroadcastProvider>().setSelectedReminderDate(picked);
+                                context
+                                    .read<BroadcastProvider>()
+                                    .setSelectedReminderDate(picked);
                                 _fetchReminderPlans(context);
                               }
                             },
                             borderRadius: BorderRadius.circular(9),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 9,
+                                horizontal: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color: isCustomDateSelected ? const Color(0xFF000080) : Colors.transparent,
+                                color: isCustomDateSelected
+                                    ? const Color(0xFF000080)
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.circular(9),
                                 boxShadow: isCustomDateSelected
                                     ? [
                                         BoxShadow(
-                                          color: const Color(0xFF000080).withValues(alpha: 0.2),
+                                          color: const Color(
+                                            0xFF000080,
+                                          ).withValues(alpha: 0.2),
                                           blurRadius: 6,
                                           offset: const Offset(0, 2),
-                                        )
+                                        ),
                                       ]
                                     : [],
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.calendar_month_outlined, size: 14.r, color: isCustomDateSelected ? Colors.white : const Color(0xFF64748B)),
+                                  Icon(
+                                    Icons.calendar_month_outlined,
+                                    size: 14.r,
+                                    color: isCustomDateSelected
+                                        ? Colors.white
+                                        : const Color(0xFF64748B),
+                                  ),
                                   const SizedBox(width: 5),
                                   Flexible(
                                     child: Text(
-                                      isCustomDateSelected ? formattedCustomDate : context.tr('Select Date'),
+                                      isCustomDateSelected
+                                          ? formattedCustomDate
+                                          : context.tr('Select Date'),
                                       style: GoogleFonts.inter(
                                         fontSize: 11.sp,
-                                        fontWeight: isCustomDateSelected ? FontWeight.w700 : FontWeight.w600,
-                                        color: isCustomDateSelected ? Colors.white : const Color(0xFF64748B),
+                                        fontWeight: isCustomDateSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        color: isCustomDateSelected
+                                            ? Colors.white
+                                            : const Color(0xFF64748B),
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-
-                        // All Reminders Pill
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              context.read<BroadcastProvider>().setShowAllReminders(true);
-                              _fetchReminderPlans(context);
-                            },
-                            borderRadius: BorderRadius.circular(9),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(vertical: 9),
-                              decoration: BoxDecoration(
-                                color: isShowAll ? const Color(0xFF000080) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(9),
-                                boxShadow: isShowAll
-                                    ? [
-                                        BoxShadow(
-                                          color: const Color(0xFF000080).withValues(alpha: 0.2),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
-                                        )
-                                      ]
-                                    : [],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  context.tr('All'),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12.sp,
-                                    fontWeight: isShowAll ? FontWeight.w700 : FontWeight.w600,
-                                    color: isShowAll ? Colors.white : const Color(0xFF64748B),
-                                  ),
-                                ),
                               ),
                             ),
                           ),
@@ -1147,19 +1597,34 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                       controller: _reminderSearchController,
                       style: GoogleFonts.inter(fontSize: 13.sp),
                       decoration: InputDecoration(
-                        hintText: context.tr('Search customer, phone or vehicle...'),
-                        hintStyle: GoogleFonts.inter(fontSize: 13.sp, color: const Color(0xFF94A3B8)),
-                        prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                        hintText: context.tr(
+                          'Search customer, phone or vehicle...',
+                        ),
+                        hintStyle: GoogleFonts.inter(
+                          fontSize: 13.sp,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          size: 18,
+                          color: Color(0xFF64748B),
+                        ),
                         suffixIcon: _reminderSearchController.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 18,
+                                  color: Color(0xFF64748B),
+                                ),
                                 onPressed: () {
                                   _reminderSearchController.clear();
                                 },
                               )
                             : null,
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                        ),
                       ),
                     ),
                   ),
@@ -1170,7 +1635,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFEEF2FF),
                               borderRadius: BorderRadius.circular(12),
@@ -1187,7 +1655,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                           if (selectedReminderIds.isNotEmpty) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFECFDF5),
                                 borderRadius: BorderRadius.circular(12),
@@ -1207,9 +1678,13 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                       InkWell(
                         onTap: () {
                           if (allSelected) {
-                            context.read<BroadcastProvider>().clearReminderSelections();
+                            context
+                                .read<BroadcastProvider>()
+                                .clearReminderSelections();
                           } else {
-                            context.read<BroadcastProvider>().selectAllReminders(filteredPlans);
+                            context
+                                .read<BroadcastProvider>()
+                                .selectAllReminders(filteredPlans);
                           }
                         },
                         child: Row(
@@ -1226,13 +1701,19 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                               value: allSelected,
                               onChanged: (val) {
                                 if (val == true) {
-                                  context.read<BroadcastProvider>().selectAllReminders(filteredPlans);
+                                  context
+                                      .read<BroadcastProvider>()
+                                      .selectAllReminders(filteredPlans);
                                 } else {
-                                  context.read<BroadcastProvider>().clearReminderSelections();
+                                  context
+                                      .read<BroadcastProvider>()
+                                      .clearReminderSelections();
                                 }
                               },
                               activeColor: const Color(0xFF000080),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                             ),
                           ],
                         ),
@@ -1259,7 +1740,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.notifications_off_outlined, size: 56.r, color: Colors.grey.shade300),
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 56.r,
+                            color: Colors.grey.shade300,
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             context.tr('No due reminders found'),
@@ -1271,7 +1756,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            context.tr('Select a different date or clear search filters.'),
+                            context.tr(
+                              'Select a different date or clear search filters.',
+                            ),
                             style: GoogleFonts.inter(
                               color: Colors.grey.shade400,
                               fontSize: 12.sp,
@@ -1283,7 +1770,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     itemCount: filteredPlans.length,
                     itemBuilder: (context, index) {
                       final plan = filteredPlans[index];
@@ -1308,12 +1798,15 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     final planId = (plan['id'] ?? '').toString();
     final isSelected = selectedReminderIds.contains(planId);
     final isSent = plan['is_sent'] == true;
-    final reminderDate = plan['formatted_date'] ?? plan['scheduled_date'] ?? 'N/A';
+    final reminderDate =
+        plan['formatted_date'] ?? plan['scheduled_date'] ?? 'N/A';
     final custName = plan['customer_name'] ?? 'Customer';
     final custPhone = plan['customer_phone'] ?? 'No Phone';
     final vehicleNum = plan['vehicle_number'] ?? 'N/A';
     final serviceName = plan['service_name'] ?? 'Service';
-    final serviceCategory = (plan['service_category'] ?? '').toString().toLowerCase();
+    final serviceCategory = (plan['service_category'] ?? '')
+        .toString()
+        .toLowerCase();
 
     // Determine category accent color & icon
     IconData categoryIcon = Icons.build_circle_outlined;
@@ -1324,11 +1817,13 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       categoryIcon = Icons.water_drop_outlined;
       categoryBg = const Color(0xFFFFFBEB);
       categoryText = const Color(0xFFB45309);
-    } else if (serviceCategory.contains('wheel') || serviceCategory.contains('align')) {
+    } else if (serviceCategory.contains('wheel') ||
+        serviceCategory.contains('align')) {
       categoryIcon = Icons.tire_repair_outlined;
       categoryBg = const Color(0xFFECFDF5);
       categoryText = const Color(0xFF047857);
-    } else if (serviceCategory.contains('wash') || serviceCategory.contains('detail')) {
+    } else if (serviceCategory.contains('wash') ||
+        serviceCategory.contains('detail')) {
       categoryIcon = Icons.local_car_wash_outlined;
       categoryBg = const Color(0xFFF0FDF4);
       categoryText = const Color(0xFF15803D);
@@ -1345,7 +1840,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14.r),
             border: Border.all(
-              color: isSelected ? const Color(0xFF000080) : const Color(0xFFE2E8F0),
+              color: isSelected
+                  ? const Color(0xFF000080)
+                  : const Color(0xFFE2E8F0),
               width: isSelected ? 1.8 : 1,
             ),
             boxShadow: [
@@ -1359,294 +1856,365 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           child: Opacity(
             opacity: isSent ? 0.75 : 1.0,
             child: Column(
-            children: [
-              // Top Row: Checkbox + Customer Info + Date Badge
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: isSelected,
-                      activeColor: const Color(0xFF000080),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      onChanged: (val) {
-                        context.read<BroadcastProvider>().toggleReminderSelection(planId);
-                      },
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            custName,
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14.sp,
-                              color: const Color(0xFF0F172A),
+              children: [
+                // Top Row: Checkbox + Customer Info + Date Badge
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        activeColor: const Color(0xFF000080),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        onChanged: (val) {
+                          context
+                              .read<BroadcastProvider>()
+                              .toggleReminderSelection(planId);
+                        },
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              custName,
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14.sp,
+                                color: const Color(0xFF0F172A),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(Icons.phone_outlined, size: 12.r, color: const Color(0xFF64748B)),
-                              const SizedBox(width: 4),
-                              Text(
-                                custPhone,
-                                style: GoogleFonts.inter(
-                                  fontSize: 11.sp,
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.phone_outlined,
+                                  size: 12.r,
                                   color: const Color(0xFF64748B),
-                                  fontWeight: FontWeight.w500,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  custPhone,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.sp,
+                                    color: const Color(0xFF64748B),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Sent Badge or Due Date Badge
+                      isSent
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    size: 12.r,
+                                    color: const Color(0xFF16A34A),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    context.tr('Sent'),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF16A34A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.event,
+                                    size: 12.r,
+                                    color: const Color(0xFF475569),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    reminderDate,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF334155),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ],
+                  ),
+                ),
+
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFF1F5F9),
+                ),
+
+                // Middle Row: Vehicle Chip + Service Badge
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      // Vehicle Number Chip
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.directions_car,
+                              size: 13.r,
+                              color: const Color(0xFF334155),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              vehicleNum,
+                              style: GoogleFonts.inter(
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF1E293B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Service Category Badge
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: categoryBg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                categoryIcon,
+                                size: 13.r,
+                                color: categoryText,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  serviceName,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: categoryText,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    // Sent Badge or Due Date Badge
-                    isSent
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle, size: 12.r, color: const Color(0xFF16A34A)),
-                            const SizedBox(width: 4),
-                            Text(
-                              context.tr('Sent'),
-                              style: GoogleFonts.inter(
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF16A34A),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.event, size: 12.r, color: const Color(0xFF475569)),
-                            const SizedBox(width: 4),
-                            Text(
-                              reminderDate,
-                              style: GoogleFonts.inter(
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-
-              // Middle Row: Vehicle Chip + Service Badge
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Row(
-                  children: [
-                    // Vehicle Number Chip
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.directions_car, size: 13.r, color: const Color(0xFF334155)),
-                          const SizedBox(width: 4),
-                          Text(
-                            vehicleNum,
-                            style: GoogleFonts.inter(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1E293B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Service Category Badge
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: categoryBg,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(categoryIcon, size: 13.r, color: categoryText),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                serviceName,
-                                style: GoogleFonts.inter(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: categoryText,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Optional Oil KM Badge if applicable
-              if (plan['next_oil_change_km'] != null) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                  child: Row(
-                    children: [
-                      Icon(Icons.speed, size: 12.r, color: const Color(0xFFD97706)),
-                      const SizedBox(width: 4),
-                      Text(
-                        "${context.tr('Next Oil Change Due:')} ${plan['next_oil_change_km']} KM",
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFD97706),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
 
-              const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-
-              // Bottom Row: Action Buttons (WhatsApp Chat, API Send, Mark Sent)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Row(
-                  children: [
-                    // WhatsApp Chat Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => _launchDirectWhatsAppReminder(context, plan),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF86EFAC)),
+                // Optional Oil KM Badge if applicable
+                if (plan['next_oil_change_km'] != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.speed,
+                          size: 12.r,
+                          color: const Color(0xFFD97706),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "${context.tr('Next Oil Change Due:')} ${plan['next_oil_change_km']} KM",
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFD97706),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.chat_bubble_outline, size: 14.r, color: const Color(0xFF16A34A)),
-                              const SizedBox(width: 4),
-                              Text(
-                                context.tr('WhatsApp Chat'),
-                                style: GoogleFonts.inter(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF15803D),
-                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFF1F5F9),
+                ),
+
+                // Bottom Row: Action Buttons (WhatsApp Chat, API Send, Mark Sent)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      // WhatsApp Chat Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () =>
+                              _launchDirectWhatsAppReminder(context, plan),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFF86EFAC),
                               ),
-                            ],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 14.r,
+                                  color: const Color(0xFF16A34A),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  context.tr('WhatsApp Chat'),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF15803D),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
 
-                    // Send API Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: isSendingSingle ? null : () => _sendSingleReminder(context, plan),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF000080),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: isSendingSingle
-                                ? SizedBox(
-                                    width: 14.r,
-                                    height: 14.r,
-                                    child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.send_outlined, size: 14.r, color: Colors.white),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        context.tr('Send'),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11.sp,
-                                          fontWeight: FontWeight.w700,
+                      // Send API Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: isSendingSingle
+                              ? null
+                              : () => _sendSingleReminder(context, plan),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF000080),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: isSendingSingle
+                                  ? SizedBox(
+                                      width: 14.r,
+                                      height: 14.r,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.send_outlined,
+                                          size: 14.r,
                                           color: Colors.white,
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          context.tr('Send'),
+                                          style: GoogleFonts.inter(
+                                            fontSize: 11.sp,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
 
-                    // Mark Sent Action Button
-                    // InkWell(
-                    //   onTap: () async {
-                    //     final token = context.read<AuthProvider>().token;
-                    //     if (token != null) {
-                    //       await broadcastProvider.sendReminders(token, [planId], action: 'mark_sent');
-                    //       _reminderPlansNotifier.value = broadcastProvider.reminderPlans;
-                    //     }
-                    //   },
-                    //   borderRadius: BorderRadius.circular(8),
-                    //   child: Container(
-                    //     padding: const EdgeInsets.all(8),
-                    //     decoration: BoxDecoration(
-                    //       color: const Color(0xFFF1F5F9),
-                    //       borderRadius: BorderRadius.circular(8),
-                    //       border: Border.all(color: const Color(0xFFCBD5E1)),
-                    //     ),
-                    //     child: Icon(
-                    //       Icons.check_circle_outline,
-                    //       size: 16.r,
-                    //       color: const Color(0xFF64748B),
-                    //     ),
-                    //   ),
-                    // ),
-                  ],
+                      // Mark Sent Action Button
+                      // InkWell(
+                      //   onTap: () async {
+                      //     final token = context.read<AuthProvider>().token;
+                      //     if (token != null) {
+                      //       await broadcastProvider.sendReminders(token, [planId], action: 'mark_sent');
+                      //       _reminderPlansNotifier.value = broadcastProvider.reminderPlans;
+                      //     }
+                      //   },
+                      //   borderRadius: BorderRadius.circular(8),
+                      //   child: Container(
+                      //     padding: const EdgeInsets.all(8),
+                      //     decoration: BoxDecoration(
+                      //       color: const Color(0xFFF1F5F9),
+                      //       borderRadius: BorderRadius.circular(8),
+                      //       border: Border.all(color: const Color(0xFFCBD5E1)),
+                      //     ),
+                      //     child: Icon(
+                      //       Icons.check_circle_outline,
+                      //       size: 16.r,
+                      //       color: const Color(0xFF64748B),
+                      //     ),
+                      //   ),
+                      // ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         );
       },
     );
@@ -1675,10 +2243,23 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             final hasSelection = selectedReminderIds.isNotEmpty;
 
             return ElevatedButton.icon(
-              onPressed: hasSelection && !isSendingBulkReminders ? () => _sendBulkReminders(context) : null,
+              onPressed: hasSelection && !isSendingBulkReminders
+                  ? () => _sendBulkReminders(context)
+                  : null,
               icon: isSendingBulkReminders
-                  ? SizedBox(width: 18.r, height: 18.r, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Icon(Icons.send_and_archive, color: Colors.white, size: 18.r),
+                  ? SizedBox(
+                      width: 18.r,
+                      height: 18.r,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      Icons.send_and_archive,
+                      color: Colors.white,
+                      size: 18.r,
+                    ),
               label: Text(
                 hasSelection
                     ? "${context.tr('Send Selected')} (${selectedReminderIds.length})"
@@ -1694,7 +2275,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 disabledBackgroundColor: Colors.grey.shade400,
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 0,
               ),
             );
@@ -1704,4 +2287,3 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     );
   }
 }
-

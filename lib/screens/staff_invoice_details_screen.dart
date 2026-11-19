@@ -78,6 +78,9 @@ class _StaffInvoiceDetailsScreenState extends State<StaffInvoiceDetailsScreen> {
       'trading_items': inv['trading_items'] ?? [],
       'taxes': inv['taxes'] ?? [],
       'company_logo': inv['company_logo'] ?? '',
+      'company_seal': inv['company_seal'] ?? '',
+      'company_trn': inv['company_trn'] ?? '',
+      'payment_mode': inv['payment_mode'] ?? '',
       'branch_logo': inv['branch_logo'] ?? '',
       'branch': inv['branch'] ?? '',
     };

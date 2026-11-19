@@ -87,6 +87,12 @@ class _BillsScreenState extends State<BillsScreen> {
     return d.toStringAsFixed(2);
   }
 
+  double _toDouble(dynamic value, [double fallback = 0.0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? fallback;
+  }
+
   Future<void> _fetchInvoices(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
@@ -96,6 +102,27 @@ class _BillsScreenState extends State<BillsScreen> {
       fromDate: _fromDateNotifier.value != null ? _formatDate(_fromDateNotifier.value!) : null,
       toDate: _toDateNotifier.value != null ? _formatDate(_toDateNotifier.value!) : null,
       paymentMode: _paymentModeNotifier.value,
+    );
+  }
+
+  void _openCreditNoteModal(BuildContext context, Map<String, dynamic> inv) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _CreditNoteBottomSheet(
+        inv: inv,
+        currencySymbol: currencySymbol(context),
+        onSuccess: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.tr(msg)),
+              backgroundColor: Colors.green.shade700,
+            ),
+          );
+          _fetchInvoices(context);
+        },
+      ),
     );
   }
 
@@ -201,6 +228,21 @@ class _BillsScreenState extends State<BillsScreen> {
         return response.bodyBytes;
       }
     } catch (_) {}
+
+    final invId = inv['id']?.toString() ?? '';
+    if (invId.isNotEmpty) {
+      try {
+        final directUrl = "$baseUrl/invoices/$invId/pdf/?t=${DateTime.now().millisecondsSinceEpoch}";
+        final response = await http.get(
+          Uri.parse(directUrl),
+          headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+        );
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          return response.bodyBytes;
+        }
+      } catch (_) {}
+    }
+
     final localPdf = await _generateInvoicePdf(context, inv);
     return localPdf.save();
   }
@@ -220,22 +262,23 @@ class _BillsScreenState extends State<BillsScreen> {
     final tradingItems = inv['trading_items'] as List<dynamic>? ?? [];
     final allItems = <Map<String, dynamic>>[];
     for (final s in services) {
-      final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
-      final rate = (s['rate'] as num?)?.toDouble() ?? 0.0;
-      final net = (s['net_taxable_amount'] as num?)?.toDouble() ?? (qty * rate);
+      final qty = _toDouble(s['qty'], 1.0);
+      final rate = _toDouble(s['rate'], 0.0);
+      final net = _toDouble(s['net_taxable_amount'], qty * rate);
       final qtyStr = qty > 1 ? qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1) : '1';
       allItems.add({
         'name': s['name'] ?? '',
         'qty': qtyStr,
         'rate': _fmt(rate),
         'net': _fmt(net),
+        'raw_rate': rate,
       });
     }
     for (final t in tradingItems) {
       if (t['is_operational'] == true) continue;
-      final qty = (t['qty'] as num?)?.toDouble() ?? 1.0;
-      final rate = (t['rate'] as num?)?.toDouble() ?? 0.0;
-      final disc = (t['discount'] as num?)?.toDouble() ?? 0.0;
+      final qty = _toDouble(t['qty'], 1.0);
+      final rate = _toDouble(t['rate'], 0.0);
+      final disc = _toDouble(t['discount'], 0.0);
       final net = (qty * rate) - disc;
       final qtyStr = qty > 1 ? qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1) : '1';
       allItems.add({
@@ -243,8 +286,15 @@ class _BillsScreenState extends State<BillsScreen> {
         'qty': qtyStr,
         'rate': _fmt(rate),
         'net': _fmt(net),
+        'raw_rate': rate,
       });
     }
+    // Sort services/items in PDF from price high to low
+    allItems.sort((a, b) {
+      final rateA = _toDouble(a['raw_rate'], 0.0);
+      final rateB = _toDouble(b['raw_rate'], 0.0);
+      return rateB.compareTo(rateA);
+    });
 
     pw.ImageProvider? logoImage;
     try {
@@ -259,7 +309,7 @@ class _BillsScreenState extends State<BillsScreen> {
 
     if (logoImage == null) {
       try {
-        final logoData = await rootBundle.load('assets/icons/Wash-Pilot_Blue-Icon.png');
+        final logoData = await rootBundle.load('assets/icons/mobiz_autocare_mark_blue.png');
         logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
       } catch (_) {}
     }
@@ -287,10 +337,46 @@ class _BillsScreenState extends State<BillsScreen> {
     final branchEmail = inv['branch_email']?.toString() ?? '';
     final branchGst = inv['branch_gst']?.toString() ?? '';
     final dateStr = inv['date']?.toString() ?? '';
+    final customisation = (inv['customisation'] as Map<String, dynamic>?) ?? {};
+    final String nonTaxTitle = (customisation['non_tax_title'] ?? 'PROFORMA INVOICE').toString().trim();
+    final bool showVehicleNumber = customisation['show_vehicle_number'] != false;
+    final bool showVehicleMake = customisation['show_vehicle_make'] != false;
+    final bool showVehicleModel = customisation['show_vehicle_model'] != false;
+    final bool showVehicleSegment = customisation['show_vehicle_segment'] != false;
+    final bool showVehicleType = customisation['show_vehicle_type'] != false;
+    final bool showVehicleColor = customisation['show_vehicle_color'] != false;
+    final bool showVehicleFuelType = customisation['show_vehicle_fuel_type'] != false;
+    final bool showVehicleWheelType = customisation['show_vehicle_wheel_type'] != false;
+    final bool showVehicleEmissionStd = customisation['show_vehicle_emission_std'] != false;
+
+    final String rawCompanyTrn = (inv['company_trn'] ?? inv['branch_gst'] ?? branchGst).toString().trim();
+    final String companyTrn = rawCompanyTrn.replaceAll(RegExp(r'^(TRN\s*:\s*|TRN\s*)', caseSensitive: false), '').trim();
+    final String cleanBranchAddress = companyTrn.isNotEmpty
+        ? branchAddress
+            .split('\n')
+            .where((line) => !RegExp(r'\bTRN\b|\bGSTIN?\b', caseSensitive: false).hasMatch(line))
+            .join('\n')
+            .trim()
+        : branchAddress;
+    final String custTrn = (inv['customer']?['tax_number'] ?? inv['customer']?['tin_number'] ?? inv['customer_tax_number'] ?? inv['customer_tin_number'] ?? '').toString().trim();
+
+    String paymentMode = (inv['payment_mode'] ?? '').toString().trim();
+    if (paymentMode.isEmpty) {
+      if (inv['invoice_type'] == 'creditinvoice') {
+        paymentMode = 'Credit';
+      } else if (inv['invoice_type'] == 'cashinvoice') {
+        paymentMode = 'Cash';
+      }
+    } else {
+      paymentMode = paymentMode.replaceAll('_', ' ');
+      paymentMode = paymentMode.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+    }
+
     final symbol = currencySymbol(context);
 
     pdf.addPage(pw.Page(
       pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.symmetric(horizontal: 28, vertical: 24),
       build: (pw.Context ctx) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -304,7 +390,7 @@ class _BillsScreenState extends State<BillsScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     if (logoImage != null) ...[
-                      pw.Image(logoImage, width: 55, height: 55, fit: pw.BoxFit.contain),
+                      pw.Image(logoImage, width: 85, height: 85, fit: pw.BoxFit.contain),
                       pw.SizedBox(width: 12),
                     ],
                     pw.Expanded(
@@ -315,14 +401,14 @@ class _BillsScreenState extends State<BillsScreen> {
                               style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
                           pw.Text(branchName,
                               style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
-                          if (branchAddress.isNotEmpty)
-                            pw.Text(branchAddress, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                          if (cleanBranchAddress.isNotEmpty)
+                            pw.Text(cleanBranchAddress, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
                           if (branchPhone.isNotEmpty)
-                            pw.Text("Phone: $branchPhone", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                            pw.Text("Phone: $branchPhone", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
                           if (branchEmail.isNotEmpty)
-                            pw.Text("Email: $branchEmail", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-                          if (branchGst.isNotEmpty)
-                            pw.Text("GSTIN: $branchGst", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                            pw.Text("Email: $branchEmail", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                          if (branchGst.isNotEmpty && companyTrn.isEmpty)
+                            pw.Text("GSTIN: $branchGst", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
                         ],
                       ),
                     ),
@@ -336,20 +422,26 @@ class _BillsScreenState extends State<BillsScreen> {
                   pw.Text(
                       (double.tryParse(inv['tax_amount']?.toString() ?? '0') ?? 0.0) > 0
                           ? 'TAX INVOICE'
-                          : 'PROFORMA INVOICE',
-                      style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                  pw.SizedBox(height: 4),
+                          : (nonTaxTitle.isNotEmpty ? nonTaxTitle : 'PROFORMA INVOICE'),
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  if (companyTrn.isNotEmpty) ...[
+                    pw.SizedBox(height: 2),
+                    pw.Text('TRN: $companyTrn',
+                        style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  ],
+                  pw.SizedBox(height: 3),
                   pw.Text(inv['invoice_number'],
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+                      style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
                   pw.Text(inv['invoice_type'] == 'creditinvoice' ? 'Credit Invoice' : 'Cash Invoice',
-                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
                   if (dateStr.isNotEmpty)
-                    pw.Text(_formatDisplayDate(context, dateStr), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text(_formatDisplayDate(context, dateStr), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
                 ],
               ),
             ],
           ),
-          pw.Divider(height: 30),
+          pw.SizedBox(height: 3),
+          pw.Divider(height: 14),
 
           // Customer & Vehicle
           pw.Row(
@@ -358,42 +450,58 @@ class _BillsScreenState extends State<BillsScreen> {
             children: [
               pw.Expanded(
                 child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text('BILLED TO', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
-                  pw.SizedBox(height: 4),
-                  pw.Text(inv['customer']?['name'] ?? '', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text('BILLED TO', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+                  pw.SizedBox(height: 3),
+                  pw.Text(inv['customer']?['name'] ?? '', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
                   if ((inv['customer']?['phone'] ?? '').toString().isNotEmpty)
-                    pw.Text(inv['customer']['phone'].toString(), style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(inv['customer']['phone'].toString(), style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
                   if ((inv['customer']?['address'] ?? '').toString().isNotEmpty)
                     pw.Padding(
                       padding: const pw.EdgeInsets.only(top: 2, right: 10),
-                      child: pw.Text(inv['customer']['address'].toString(), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                      child: pw.Text(inv['customer']['address'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
                     ),
-                  if ((inv['customer']?['tax_number'] ?? '').toString().isNotEmpty)
+                  if (custTrn.isNotEmpty)
                     pw.Padding(
                       padding: const pw.EdgeInsets.only(top: 2),
-                      child: pw.Text("Tax/TRN: ${inv['customer']['tax_number']}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800, fontWeight: pw.FontWeight.bold)),
-                    ),
-                  if ((inv['customer']?['tin_number'] ?? '').toString().isNotEmpty)
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.only(top: 2),
-                      child: pw.Text("TIN: ${inv['customer']['tin_number']}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800)),
+                      child: pw.Text("TRN: $custTrn", style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800, fontWeight: pw.FontWeight.bold)),
                     ),
                 ]),
               ),
               pw.SizedBox(width: 16),
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                pw.Text('VEHICLE', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
-                pw.SizedBox(height: 4),
-                pw.Text(inv['vehicle']?['number'] ?? '', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                pw.Text(inv['vehicle']?['model'] ?? '', style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+                pw.Text('VEHICLE', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+                pw.SizedBox(height: 3),
+                if (showVehicleNumber && (inv['vehicle']?['number'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']?['number'] ?? '', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                if (showVehicleMake || showVehicleModel) ...[
+                  pw.Text(
+                    [
+                      if (showVehicleMake && (inv['vehicle']?['make'] ?? '').toString().isNotEmpty) inv['vehicle']['make'].toString(),
+                      if (showVehicleModel && (inv['vehicle']?['model'] ?? '').toString().isNotEmpty) inv['vehicle']['model'].toString(),
+                    ].join(' '),
+                    style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey800),
+                  ),
+                ],
+                if (showVehicleType && (inv['vehicle']?['type'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['type'].toString(), style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                if (showVehicleSegment && (inv['vehicle']?['segment'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['segment'].toString(), style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                if (showVehicleColor && (inv['vehicle']?['color'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['color'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleFuelType && (inv['vehicle']?['fuel_type'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['fuel_type'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleWheelType && (inv['vehicle']?['wheel_type'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['wheel_type'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleEmissionStd && (inv['vehicle']?['emission_standard'] ?? '').toString().isNotEmpty)
+                  pw.Text(inv['vehicle']['emission_standard'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
               ]),
             ],
           ),
-          pw.SizedBox(height: 24),
+          pw.SizedBox(height: 12),
 
           // Services table
-          pw.Text('SERVICES', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
-          pw.SizedBox(height: 8),
+          pw.Text('SERVICES', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+          pw.SizedBox(height: 4),
           pw.Table.fromTextArray(
             headers: ['Service / Item', 'Qty', 'Rate ($symbol)', 'Amount ($symbol)'],
             data: allItems.map((item) => [
@@ -402,34 +510,38 @@ class _BillsScreenState extends State<BillsScreen> {
               item['rate'] ?? '',
               item['net'] ?? '',
             ]).toList(),
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerStyle: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
-            cellHeight: 28,
+            cellHeight: 22,
+            cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.centerRight, 3: pw.Alignment.centerRight},
           ),
-          pw.SizedBox(height: 20),
+          pw.SizedBox(height: 10),
 
           // Totals
           pw.Container(
             alignment: pw.Alignment.centerRight,
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-              pw.Text('Subtotal:  $symbol${inv['subtotal']}'),
-              pw.Text('Discount:  $symbol${inv['discount']}'),
-              pw.Text('Tax:       $symbol${inv['tax_amount']}'),
-              pw.Divider(),
-              pw.Text('Total:     $symbol${inv['total']}',
-                  style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-              pw.SizedBox(height: 4),
-              pw.Text('Collected: $symbol${inv['amount_collected']}',
-                  style: pw.TextStyle(fontSize: 12, color: PdfColors.green700)),
+              pw.Text('Subtotal:  $symbol${_fmt(inv['subtotal'])}', style: pw.TextStyle(fontSize: 9.5)),
+              if ((double.tryParse(inv['discount']?.toString() ?? '0') ?? 0) > 0)
+                pw.Text('Discount:  -$symbol${_fmt(inv['discount'])}', style: pw.TextStyle(fontSize: 9.5, color: PdfColors.green700)),
+              pw.Text('Tax:       $symbol${_fmt(inv['tax_amount'])}', style: pw.TextStyle(fontSize: 9.5)),
+              if (paymentMode.isNotEmpty)
+                pw.Text('Payment Mode:  $paymentMode', style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
+              pw.Container(width: 160, child: pw.Divider()),
+              pw.Text('Total:     $symbol${_fmt(inv['total'])}',
+                  style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+              pw.SizedBox(height: 3),
+              pw.Text('Collected: $symbol${_fmt(inv['amount_collected'])}',
+                  style: pw.TextStyle(fontSize: 11, color: PdfColors.green700)),
             ]),
           ),
           // Remarks / Notes
           if ((inv['remarks']?.toString() ?? '').trim().isNotEmpty) ...[
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 8),
             pw.Container(
               width: double.infinity,
-              padding: const pw.EdgeInsets.all(10),
+              padding: const pw.EdgeInsets.all(8),
               decoration: pw.BoxDecoration(
                 color: PdfColors.grey50,
                 border: pw.Border(
@@ -449,9 +561,9 @@ class _BillsScreenState extends State<BillsScreen> {
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.indigo900,
                           letterSpacing: 0.5)),
-                  pw.SizedBox(height: 4),
+                  pw.SizedBox(height: 3),
                   pw.Text(inv['remarks'].toString().trim(),
-                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800)),
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800)),
                 ],
               ),
             ),
@@ -465,22 +577,22 @@ class _BillsScreenState extends State<BillsScreen> {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('Thank you for choosing $branchName',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                  pw.SizedBox(height: 4),
+                      style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  pw.SizedBox(height: 3),
                   pw.Text('Powered by Mobiz Technologies',
-                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey500)),
                 ],
               ),
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   if (sealImage != null) ...[
-                    pw.Image(sealImage, width: 65, height: 65, fit: pw.BoxFit.contain),
+                    pw.Image(sealImage, width: 95, height: 95, fit: pw.BoxFit.contain),
                     pw.SizedBox(height: 4),
                   ],
-                  pw.Container(width: 100, height: 1, color: PdfColors.grey400),
+                  pw.Container(width: 120, height: 1, color: PdfColors.grey400),
                   pw.SizedBox(height: 2),
-                  pw.Text('Authorized Signatory', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                  pw.Text('Authorized Signatory', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                 ],
               ),
             ],
@@ -553,7 +665,7 @@ class _BillsScreenState extends State<BillsScreen> {
       final invoiceNumber = inv['invoice_number'] as String? ?? '';
 
       final servicesStr = services.map((s) {
-        final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
+        final qty = _toDouble(s['qty'], 1.0);
         final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
         return "- ${s['name']}$qtyStr: $symbol${_fmt(s['rate'])}";
       }).join("\n");
@@ -619,7 +731,7 @@ class _BillsScreenState extends State<BillsScreen> {
       final invoiceNumber = inv['invoice_number'] as String? ?? '';
 
       final servicesStr = services.map((s) {
-        final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
+        final qty = _toDouble(s['qty'], 1.0);
         final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
         return "- ${s['name']}$qtyStr: $symbol${_fmt(s['rate'])}";
       }).join("\n");
@@ -919,7 +1031,9 @@ class _BillsScreenState extends State<BillsScreen> {
     final services = inv['services'] as List<dynamic>? ?? [];
     final total = double.tryParse(inv['total'].toString()) ?? 0;
     final collected = double.tryParse(inv['amount_collected'].toString()) ?? 0;
-    final isFullyPaid = collected >= total;
+    final creditNoteAmount = double.tryParse(inv['credit_note_amount']?.toString() ?? '0') ?? 0;
+    final remainingOutstanding = (total - collected - creditNoteAmount).clamp(0.0, double.infinity);
+    final isFullyPaid = (collected + creditNoteAmount) >= (total - 0.001);
     final symbol = currencySymbol(context);
 
     return Container(
@@ -979,6 +1093,22 @@ class _BillsScreenState extends State<BillsScreen> {
                               fontWeight: FontWeight.bold,
                               color: isFullyPaid ? Colors.green.shade700 : Colors.orange.shade700)),
                     ),
+                    if (creditNoteAmount > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Text('CN: $symbol${creditNoteAmount.toStringAsFixed(2)}',
+                            style: GoogleFonts.inter(
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900)),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1037,6 +1167,26 @@ class _BillsScreenState extends State<BillsScreen> {
                     Text(context.tr('Collected'), style: GoogleFonts.inter(color: Colors.grey.shade500, fontSize: 12.sp)),
                     Text(context.tr('$symbol${inv['amount_collected']}'),
                         style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13.sp, color: Colors.green.shade700)),
+                  ],
+                ),
+                if (creditNoteAmount > 0) ...[
+                  SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(context.tr('Credit Note'), style: GoogleFonts.inter(color: Colors.amber.shade900, fontSize: 12.sp, fontWeight: FontWeight.w600)),
+                      Text(context.tr('-$symbol${creditNoteAmount.toStringAsFixed(2)}'),
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.sp, color: Colors.amber.shade900)),
+                    ],
+                  ),
+                ],
+                SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(context.tr('Balance Due'), style: GoogleFonts.inter(color: Colors.grey.shade600, fontSize: 12.sp)),
+                    Text(context.tr('$symbol${remainingOutstanding.toStringAsFixed(2)}'),
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.sp, color: remainingOutstanding > 0 ? Colors.red.shade700 : Colors.grey.shade700)),
                   ],
                 ),
                 SizedBox(height: 16),
@@ -1141,6 +1291,26 @@ class _BillsScreenState extends State<BillsScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openCreditNoteModal(context, inv),
+                    icon: Icon(Icons.assignment_return_outlined, size: 16),
+                    label: Text(
+                      context.tr('Credit Note'),
+                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 11.sp),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber.shade50,
+                      foregroundColor: Colors.amber.shade900,
+                      side: BorderSide(color: Colors.amber.shade400),
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1220,7 +1390,8 @@ class _BillsScreenState extends State<BillsScreen> {
             DropdownMenuItem<String>(value: '', child: Text(context.tr('All payment modes'))),
             DropdownMenuItem<String>(value: 'cash', child: Text(context.tr('Cash'))),
             DropdownMenuItem<String>(value: 'card', child: Text(context.tr('Card'))),
-            DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
+            if (!CountryConfig.isUAE)
+              DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
           ],
           onChanged: (value) {
             _paymentModeNotifier.value = value == null || value.isEmpty ? null : value;
@@ -1228,6 +1399,619 @@ class _BillsScreenState extends State<BillsScreen> {
           },
         );
       },
+    );
+  }
+}
+
+
+class _CreditNoteBottomSheet extends StatefulWidget {
+  final Map<String, dynamic> inv;
+  final String currencySymbol;
+  final Function(String message) onSuccess;
+
+  const _CreditNoteBottomSheet({
+    required this.inv,
+    required this.currencySymbol,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_CreditNoteBottomSheet> createState() => _CreditNoteBottomSheetState();
+}
+
+class _CreditNoteBottomSheetState extends State<_CreditNoteBottomSheet> {
+  bool _isLoading = true;
+  String? _errorMessage;
+  String _nextCnNumber = '';
+  Map<String, dynamic>? _invoiceInfo;
+  double _maxCreditable = 0.0;
+  double _currentOutstanding = 0.0;
+
+  final _amountController = TextEditingController();
+  final _remarksController = TextEditingController();
+  String _selectedReason = 'Defective / Unsatisfactory Service';
+  bool _isSubmitting = false;
+
+  final List<String> _reasons = [
+    'Defective / Unsatisfactory Service',
+    'Billing / Rate Correction',
+    'Cancellation of Service',
+    'Customer Goodwill / Discount',
+    'Other',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInfo();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _remarksController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchInfo() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final token = context.read<AuthProvider>().token;
+    if (token == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Authentication token missing';
+      });
+      return;
+    }
+
+    try {
+      final res = await ApiService.getCreditNoteInfo(
+        widget.inv['id'].toString(),
+        token,
+      );
+
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        final invData = res['invoice'] as Map<String, dynamic>? ?? {};
+        final maxCred = double.tryParse(invData['max_creditable']?.toString() ?? '0') ?? 0.0;
+        final outstanding = double.tryParse(invData['current_outstanding']?.toString() ?? '0') ?? 0.0;
+
+        setState(() {
+          _isLoading = false;
+          _nextCnNumber = res['next_credit_note_number'] ?? '';
+          _invoiceInfo = invData;
+          _maxCreditable = maxCred;
+          _currentOutstanding = outstanding;
+          _amountController.text = maxCred > 0 ? maxCred.toStringAsFixed(2) : '0.00';
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = res['message'] ?? 'Failed to load credit note details';
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
+    }
+  }
+
+  Future<void> _submitCreditNote() async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) return;
+
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Credit amount must be greater than zero')),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    if (amount > _maxCreditable + 0.01) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Amount cannot exceed max creditable ${widget.currencySymbol}${_maxCreditable.toStringAsFixed(2)}')),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final payload = {
+        'invoice_id': widget.inv['id'].toString(),
+        'credit_amount': amount,
+        'reason': _selectedReason,
+        'remarks': _remarksController.text.trim(),
+      };
+
+      final res = await ApiService.createCreditNote(payload, token);
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        Navigator.pop(context);
+        widget.onSuccess(res['message'] ?? 'Credit note created successfully');
+      } else {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.tr(res['message'] ?? 'Failed to create credit note')),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Error: $e')),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final symbol = widget.currencySymbol;
+    final enteredAmount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    final newOutstanding = (_currentOutstanding - enteredAmount).clamp(0.0, double.infinity);
+    final prevCreditNotes = widget.inv['credit_notes'] as List<dynamic>? ?? [];
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 12,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Grab handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Title Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.shade200),
+                        ),
+                        child: Icon(Icons.assignment_return_outlined, color: Colors.amber.shade900, size: 22),
+                      ),
+                      SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.tr('Credit Note'),
+                            style: GoogleFonts.inter(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1e293b),
+                            ),
+                          ),
+                          Text(
+                            '${context.tr('Invoice')} #${widget.inv['invoice_number']}',
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              color: Colors.grey.shade500,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (_nextCnNumber.isNotEmpty)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Color(0xFF000080).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Color(0xFF000080).withValues(alpha: 0.2)),
+                      ),
+                      child: Text(
+                        _nextCnNumber,
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF000080),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Divider(height: 24),
+
+              // Body content
+              if (_isLoading)
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF000080)),
+                    ),
+                  ),
+                )
+              else if (_errorMessage != null)
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Column(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red.shade400, size: 40),
+                      SizedBox(height: 12),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(color: Colors.red.shade700, fontSize: 13.sp),
+                      ),
+                      SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchInfo,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF000080),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(context.tr('Retry')),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Summary Cards Row
+                        Container(
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _summaryColumn(
+                                  context,
+                                  'Invoice Total',
+                                  '$symbol${widget.inv['total']}',
+                                  Color(0xFF1e293b),
+                                ),
+                              ),
+                              Container(width: 1, height: 32, color: Colors.grey.shade300),
+                              Expanded(
+                                child: _summaryColumn(
+                                  context,
+                                  'Collected',
+                                  '$symbol${widget.inv['amount_collected']}',
+                                  Colors.green.shade700,
+                                ),
+                              ),
+                              Container(width: 1, height: 32, color: Colors.grey.shade300),
+                              Expanded(
+                                child: _summaryColumn(
+                                  context,
+                                  'Credited',
+                                  '$symbol${_invoiceInfo?['credit_note_amount'] ?? '0.00'}',
+                                  Colors.amber.shade900,
+                                ),
+                              ),
+                              Container(width: 1, height: 32, color: Colors.grey.shade300),
+                              Expanded(
+                                child: _summaryColumn(
+                                  context,
+                                  'Max Credit',
+                                  '$symbol${_maxCreditable.toStringAsFixed(2)}',
+                                  Color(0xFF000080),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 16),
+
+                        // If previous credit notes exist
+                        if (prevCreditNotes.isNotEmpty) ...[
+                          Text(
+                            context.tr('Previous Credit Notes'),
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          ...prevCreditNotes.map((cn) => Container(
+                            margin: EdgeInsets.only(bottom: 6),
+                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade200),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.receipt, size: 14, color: Colors.amber.shade900),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      cn['credit_note_number'] ?? '',
+                                      style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 12.sp, color: Colors.amber.shade900),
+                                    ),
+                                    if (cn['date'] != null) ...[
+                                      SizedBox(width: 6),
+                                      Text('• ${cn['date']}', style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade600)),
+                                    ],
+                                  ],
+                                ),
+                                Text(
+                                  '-$symbol${cn['total']}',
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 12.sp, color: Colors.red.shade700),
+                                ),
+                              ],
+                            ),
+                          )),
+                          SizedBox(height: 12),
+                        ],
+
+                        if (_maxCreditable <= 0)
+                          Container(
+                            padding: EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle_outline, color: Colors.green.shade700),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    context.tr('This invoice has already been fully credited.'),
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green.shade800,
+                                      fontSize: 12.sp,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else ...[
+                          // Quick selection full credit
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _amountController.text = _maxCreditable.toStringAsFixed(2);
+                                    });
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: Color(0xFF000080)),
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  child: Text(
+                                    '${context.tr('Full Credit')} ($symbol${_maxCreditable.toStringAsFixed(2)})',
+                                    style: GoogleFonts.inter(fontSize: 11.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 12),
+
+                          // Amount input
+                          Text(
+                            context.tr('Credit Amount'),
+                            style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                          ),
+                          SizedBox(height: 6),
+                          TextField(
+                            controller: _amountController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              prefixText: '$symbol ',
+                              prefixStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, color: Color(0xFF1e293b)),
+                              hintText: '0.00',
+                              contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Color(0xFF000080), width: 1.5)),
+                            ),
+                            style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.w700),
+                          ),
+                          SizedBox(height: 12),
+
+                          // Reason Dropdown
+                          Text(
+                            context.tr('Reason for Credit Note'),
+                            style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                          ),
+                          SizedBox(height: 6),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedReason,
+                                isExpanded: true,
+                                icon: Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                items: _reasons.map((r) => DropdownMenuItem(
+                                  value: r,
+                                  child: Text(context.tr(r), style: GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w500)),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedReason = val);
+                                },
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 12),
+
+                          // Remarks
+                          Text(
+                            context.tr('Remarks (Optional)'),
+                            style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                          ),
+                          SizedBox(height: 6),
+                          TextField(
+                            controller: _remarksController,
+                            maxLines: 2,
+                            decoration: InputDecoration(
+                              hintText: context.tr('Enter additional notes or details...'),
+                              hintStyle: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade400),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Color(0xFF000080), width: 1.5)),
+                            ),
+                            style: GoogleFonts.inter(fontSize: 13.sp),
+                          ),
+                          SizedBox(height: 16),
+
+                          // Calculation Live Preview
+                          Container(
+                            padding: EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(context.tr('Current Outstanding'), style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600)),
+                                    Text('$symbol${_currentOutstanding.toStringAsFixed(2)}', style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(context.tr('Credit Adjustment'), style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.amber.shade900)),
+                                    Text('-$symbol${enteredAmount.toStringAsFixed(2)}', style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.amber.shade900)),
+                                  ],
+                                ),
+                                Divider(height: 12),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(context.tr('New Balance Due'), style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Color(0xFF1e293b))),
+                                    Text(
+                                      '$symbol${newOutstanding.toStringAsFixed(2)}',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w800,
+                                        color: newOutstanding > 0 ? Colors.red.shade700 : Colors.green.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 20),
+
+                          // Submit Button
+                          ElevatedButton(
+                            onPressed: _isSubmitting ? null : _submitCreditNote,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF000080),
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                            child: _isSubmitting
+                                ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : Text(
+                                    '${context.tr('Create Credit Note')} (${_nextCnNumber.isNotEmpty ? _nextCnNumber : ""})',
+                                    style: GoogleFonts.inter(fontSize: 14.sp, fontWeight: FontWeight.bold),
+                                  ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryColumn(BuildContext context, String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          context.tr(label),
+          style: GoogleFonts.inter(fontSize: 10.sp, color: Colors.grey.shade500),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 2),
+        Text(
+          value,
+          style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w800, color: color),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }

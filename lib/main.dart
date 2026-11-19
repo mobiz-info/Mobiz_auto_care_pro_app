@@ -16,6 +16,7 @@ import 'providers/expense_provider.dart';
 import 'providers/navigation_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/add_customer_provider.dart';
+import 'providers/job_card_provider.dart';
 import 'providers/font_size_provider.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/menu_screen.dart';
@@ -42,6 +43,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => NavigationProvider()),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => AddCustomerProvider()),
+        ChangeNotifierProvider(create: (_) => JobCardProvider()),
       ],
       child: const CarWashApp(),
     ),
@@ -92,6 +94,8 @@ class CarWashApp extends StatelessWidget {
             Locale('or', 'IN'),
             Locale('ps', 'AF'),
             Locale('fa', 'AF'),
+            Locale('fa', 'IR'),
+            Locale('fa'),
             Locale('ru', 'RU'),
             Locale('zh', 'CN'),
             Locale('vi', 'VN'),

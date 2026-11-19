@@ -10,7 +10,10 @@ class LanguageScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final languageProvider = context.watch<LanguageProvider>();
-    final currentLanguageCode = languageProvider.locale.languageCode;
+    final currentLocale = languageProvider.locale;
+    final currentFullCode = currentLocale.countryCode != null && currentLocale.countryCode!.isNotEmpty
+        ? '${currentLocale.languageCode}_${currentLocale.countryCode}'
+        : currentLocale.languageCode;
 
     final List<Map<String, dynamic>> languages = [
       {
@@ -92,10 +95,16 @@ class LanguageScreen extends StatelessWidget {
         'flag': '🇦🇫',
       },
       {
-        'code': 'fa',
+        'code': 'fa_AF',
         'name': 'Dari (Afghanistan)',
         'nativeName': 'دری',
         'flag': '🇦🇫',
+      },
+      {
+        'code': 'fa',
+        'name': 'Persian (Farsi)',
+        'nativeName': 'فارسی',
+        'flag': '🇮🇷',
       },
       {
         'code': 'ru',
@@ -138,7 +147,8 @@ class LanguageScreen extends StatelessWidget {
             itemCount: languages.length,
             itemBuilder: (context, index) {
               final lang = languages[index];
-              final isSelected = lang['code'] == currentLanguageCode;
+              final isSelected = lang['code'] == currentFullCode ||
+                  (lang['code'] == 'fa' && currentLocale.languageCode == 'fa' && currentLocale.countryCode != 'AF');
 
               return Card(
                 margin: EdgeInsets.only(bottom: 12.h),
@@ -159,6 +169,9 @@ class LanguageScreen extends StatelessWidget {
                       : () async {
                           try {
                             await languageProvider.setLanguage(lang['code']);
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                            }
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

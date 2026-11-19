@@ -1207,7 +1207,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         DropdownMenuItem<String>(value: '', child: Text(context.tr('All payment modes'))),
         DropdownMenuItem<String>(value: 'cash', child: Text(context.tr('Cash'))),
         DropdownMenuItem<String>(value: 'card', child: Text(context.tr('Card'))),
-        DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
+        if (!CountryConfig.isUAE)
+          DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
       ],
       onChanged: (value) {
         _selectedPaymentMode.value = value == null || value.isEmpty ? null : value;

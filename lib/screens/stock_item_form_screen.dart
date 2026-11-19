@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../config/country_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../services/api_service.dart';
@@ -21,43 +22,61 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
   bool _isSaving = false;
 
   late TextEditingController _nameController;
+  late TextEditingController _productCodeController;
+  late TextEditingController _partNumberController;
+  late TextEditingController _alternatePartNumberController;
   late TextEditingController _brandController;
-  late TextEditingController _hsnCodeController;
-  late TextEditingController _barcodeController;
-  late TextEditingController _criticalLevelController;
-  late TextEditingController _profitMarginController;
+  late TextEditingController _countryOfOriginController;
+  late TextEditingController _supplierNameController;
+  late TextEditingController _quantityController;
+  late TextEditingController _purchaseRateController;
+  late TextEditingController _sellingPriceController;
+  late TextEditingController _taxPercentController;
   late TextEditingController _cgstController;
   late TextEditingController _sgstController;
   late TextEditingController _igstController;
 
-  String? _selectedUnit;
+  // Preserved background fields
+  String? _hsnCode;
+  String? _barcode;
+  String? _criticalLevel;
+  String? _profitMargin;
   String? _selectedExpenseHeadId;
+
+  String? _selectedUnit;
   String? _selectedGroupId;
   String? _selectedSubGroupId;
+  String? _selectedSupplierId;
   bool _isTrading = true;
   bool _isOperational = false;
 
-  List<dynamic> _expenseHeads = [];
   List<dynamic> _stockGroups = [];
   List<dynamic> _currentSubGroups = [];
+  List<dynamic> _suppliers = [];
 
   final List<Map<String, String>> _unitChoices = [
-    {'value': 'Litre', 'display': 'Litre'},
-    {'value': 'Piece', 'display': 'Piece / Pcs'},
+    {'value': 'Litre', 'display': 'Litre (Ltr)'},
+    {'value': 'Millilitre', 'display': 'Millilitre (ml)'},
+    {'value': 'Kilogram', 'display': 'Kilogram (Kg)'},
+    {'value': 'Gram', 'display': 'Gram (g)'},
+    {'value': 'Piece', 'display': 'Piece (Pcs)'},
     {'value': 'Box', 'display': 'Box'},
-    {'value': 'Kilogram', 'display': 'KG'},
-    {'value': 'Meter', 'display': 'Meter'},
+    {'value': 'Packet', 'display': 'Packet'},
     {'value': 'Bottle', 'display': 'Bottle'},
     {'value': 'Can', 'display': 'Can'},
-    {'value': 'Gallon', 'display': 'Gallon'},
-    {'value': 'Pack', 'display': 'Pack'},
-    {'value': 'Set', 'display': 'Set'},
-    {'value': 'Pair', 'display': 'Pair'},
-    {'value': 'Barrel', 'display': 'Barrel'},
     {'value': 'Roll', 'display': 'Roll'},
   ];
 
   bool get isEdit => widget.item != null;
+
+  bool get isIndia {
+    if (widget.item != null && widget.item!['is_india'] != null) {
+      return widget.item!['is_india'] == true;
+    }
+    return CountryConfig.current.code == CountryCode.india ||
+        CountryConfig.phoneIsoCode.toUpperCase() == 'IN' ||
+        CountryConfig.displayName.toLowerCase().contains('india');
+  }
 
   Map<String, dynamic>? get _selectedGroupObj {
     if (_selectedGroupId == null) return null;
@@ -77,49 +96,143 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
     return found != null ? Map<String, dynamic>.from(found) : null;
   }
 
+  Map<String, dynamic>? get _selectedSupplierObj {
+    if (_selectedSupplierId == null) return null;
+    final found = _suppliers.firstWhere(
+      (s) => s['id']?.toString() == _selectedSupplierId,
+      orElse: () => null,
+    );
+    return found != null ? Map<String, dynamic>.from(found) : null;
+  }
+
   @override
   void initState() {
     super.initState();
     final item = widget.item;
 
     _nameController = TextEditingController(text: item?['item_name'] ?? '');
+    _productCodeController = TextEditingController(text: item?['product_code'] ?? item?['part_number'] ?? '');
+    _partNumberController = TextEditingController(text: item?['part_number'] ?? item?['product_code'] ?? '');
+    _alternatePartNumberController = TextEditingController(text: item?['alternate_part_number'] ?? '');
     _brandController = TextEditingController(text: item?['brand'] ?? '');
-    _hsnCodeController = TextEditingController(text: item?['hsn_code'] ?? '');
-    _barcodeController = TextEditingController(text: item?['barcode'] ?? '');
-    _criticalLevelController = TextEditingController(
-      text: item?['critical_level'] != null ? item!['critical_level'].toString() : '0.0',
+    _countryOfOriginController = TextEditingController(text: item?['country_of_origin'] ?? '');
+    _supplierNameController = TextEditingController(text: item?['supplier_name'] ?? '');
+    _quantityController = TextEditingController(
+      text: item?['quantity'] != null ? item!['quantity'].toString() : '0',
     );
-    _profitMarginController = TextEditingController(
-      text: item?['profit_margin_percent'] != null ? item!['profit_margin_percent'].toString() : '0.0',
+    _purchaseRateController = TextEditingController(
+      text: item?['purchase_rate'] != null ? item!['purchase_rate'].toString() : '0.00',
     );
-    _cgstController = TextEditingController(
-      text: item?['cgst_percent'] != null ? item!['cgst_percent'].toString() : '0.0',
-    );
-    _sgstController = TextEditingController(
-      text: item?['sgst_percent'] != null ? item!['sgst_percent'].toString() : '0.0',
-    );
-    _igstController = TextEditingController(
-      text: item?['igst_percent'] != null ? item!['igst_percent'].toString() : '0.0',
+    _sellingPriceController = TextEditingController(
+      text: item?['selling_price'] != null ? item!['selling_price'].toString() : '0.00',
     );
 
-    _selectedUnit = item?['unit'] ?? item?['base_unit'];
+    _hsnCode = item?['hsn_code'] ?? '';
+    _barcode = item?['barcode'] ?? '';
+    _criticalLevel = item?['critical_level']?.toString() ?? '0.0';
+    _profitMargin = item?['profit_margin_percent']?.toString() ?? '0.0';
     _selectedExpenseHeadId = item?['expense_head_id']?.toString();
+
+    // Initial Tax Setup based on Country
+    if (isIndia) {
+      double cgst = 0.0;
+      double sgst = 0.0;
+      double igst = 0.0;
+      if (item != null) {
+        cgst = double.tryParse(item['cgst_percent']?.toString() ?? '0') ?? 0.0;
+        sgst = double.tryParse(item['sgst_percent']?.toString() ?? '0') ?? 0.0;
+        igst = double.tryParse(item['igst_percent']?.toString() ?? '0') ?? 0.0;
+        final taxP = double.tryParse(item['tax_percent']?.toString() ?? '0') ?? 0.0;
+        if (igst == 0 && cgst == 0 && sgst == 0 && taxP > 0) {
+          igst = taxP;
+          cgst = taxP / 2.0;
+          sgst = taxP / 2.0;
+        } else if (igst > 0 && cgst == 0 && sgst == 0) {
+          cgst = igst / 2.0;
+          sgst = igst / 2.0;
+        } else if (igst == 0 && (cgst > 0 || sgst > 0)) {
+          igst = cgst + sgst;
+        }
+      } else {
+        cgst = 9.0;
+        sgst = 9.0;
+        igst = 18.0;
+      }
+      _cgstController = TextEditingController(text: _formatNum(cgst));
+      _sgstController = TextEditingController(text: _formatNum(sgst));
+      _igstController = TextEditingController(text: _formatNum(igst));
+      _taxPercentController = TextEditingController(text: _formatNum(igst));
+    } else {
+      double taxRate = 5.0;
+      if (item != null) {
+        taxRate = double.tryParse(item['tax_percent']?.toString() ?? item['vat_percent']?.toString() ?? '0') ?? 0.0;
+      }
+      _taxPercentController = TextEditingController(text: _formatNum(taxRate));
+      _cgstController = TextEditingController(text: '0.0');
+      _sgstController = TextEditingController(text: '0.0');
+      _igstController = TextEditingController(text: _formatNum(taxRate));
+    }
+
+    _selectedUnit = item?['unit'] ?? item?['base_unit'];
     _selectedGroupId = item?['group_id']?.toString() ?? item?['group']?['id']?.toString();
     _selectedSubGroupId = item?['sub_group_id']?.toString() ?? item?['sub_group']?['id']?.toString();
+    _selectedSupplierId = item?['supplier_id']?.toString() ?? item?['supplier']?['id']?.toString();
     _isTrading = item?['is_trading'] ?? true;
     _isOperational = item?['is_operational'] ?? false;
 
     _fetchDropdownData();
   }
 
+  String _formatNum(double val) {
+    if (val == val.roundToDouble()) {
+      return val.toInt().toString();
+    }
+    return val.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _onCgstChanged(String val) {
+    final cVal = double.tryParse(val.trim());
+    if (cVal != null) {
+      _sgstController.text = _formatNum(cVal);
+      final igst = cVal * 2.0;
+      _igstController.text = _formatNum(igst);
+      _taxPercentController.text = _formatNum(igst);
+    }
+  }
+
+  void _onSgstChanged(String val) {
+    final sVal = double.tryParse(val.trim());
+    final cVal = double.tryParse(_cgstController.text.trim()) ?? 0.0;
+    if (sVal != null) {
+      final igst = cVal + sVal;
+      _igstController.text = _formatNum(igst);
+      _taxPercentController.text = _formatNum(igst);
+    }
+  }
+
+  void _onIgstChanged(String val) {
+    final iVal = double.tryParse(val.trim());
+    if (iVal != null) {
+      final half = iVal / 2.0;
+      _cgstController.text = _formatNum(half);
+      _sgstController.text = _formatNum(half);
+      _taxPercentController.text = _formatNum(iVal);
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
+    _productCodeController.dispose();
+    _partNumberController.dispose();
+    _alternatePartNumberController.dispose();
     _brandController.dispose();
-    _hsnCodeController.dispose();
-    _barcodeController.dispose();
-    _criticalLevelController.dispose();
-    _profitMarginController.dispose();
+    _countryOfOriginController.dispose();
+    _supplierNameController.dispose();
+    _quantityController.dispose();
+    _purchaseRateController.dispose();
+    _sellingPriceController.dispose();
+    _taxPercentController.dispose();
     _cgstController.dispose();
     _sgstController.dispose();
     _igstController.dispose();
@@ -135,18 +248,18 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
 
     try {
       final results = await Future.wait([
-        ApiService.getExpenseHeads(token).catchError((_) => <String, dynamic>{}),
         ApiService.getStockGroups(token).catchError((_) => <String, dynamic>{}),
+        ApiService.getSuppliersList(token).catchError((_) => <String, dynamic>{}),
       ]);
 
       if (mounted) {
         setState(() {
           if (results[0]['success'] == true) {
-            _expenseHeads = results[0]['expense_heads'] ?? [];
+            _stockGroups = results[0]['groups'] ?? results[0]['stock_groups'] ?? [];
+            _updateSubGroups();
           }
           if (results[1]['success'] == true) {
-            _stockGroups = results[1]['groups'] ?? results[1]['stock_groups'] ?? [];
-            _updateSubGroups();
+            _suppliers = results[1]['suppliers'] ?? [];
           }
           _isLoadingDropdowns = false;
         });
@@ -184,7 +297,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
@@ -211,11 +324,11 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        context.tr('Select Stock Group'),
+                        context.tr('Select Category'),
                         style: GoogleFonts.inter(
                           fontSize: 15.sp,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E293B),
+                          color: const Color(0xFF1E293B),
                         ),
                       ),
                       IconButton(
@@ -226,28 +339,20 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   TextField(
                     autofocus: true,
                     style: GoogleFonts.inter(fontSize: 13.sp),
                     decoration: InputDecoration(
-                      hintText: context.tr('Search stock groups...'),
+                      hintText: context.tr('Search categories...'),
                       hintStyle: GoogleFonts.inter(fontSize: 12.5.sp, color: Colors.grey.shade400),
-                      prefixIcon: Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
                       filled: true,
-                      fillColor: Color(0xFFF8FAFC),
+                      fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
                       ),
                     ),
                     onChanged: (val) {
@@ -285,7 +390,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 24.0),
                             child: Center(
                               child: Text(
-                                context.tr('No stock groups found'),
+                                context.tr('No categories found'),
                                 style: GoogleFonts.inter(fontSize: 13.sp, color: Colors.grey.shade500),
                               ),
                             ),
@@ -301,7 +406,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                                 style: GoogleFonts.inter(
                                   fontSize: 13.sp,
                                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isSelected ? Color(0xFF2563EB) : Color(0xFF1E293B),
+                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF1E293B),
                                 ),
                               ),
                               trailing: isSelected
@@ -333,7 +438,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
@@ -360,11 +465,11 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        context.tr('Select Sub Group'),
+                        context.tr('Select Sub Category'),
                         style: GoogleFonts.inter(
                           fontSize: 15.sp,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E293B),
+                          color: const Color(0xFF1E293B),
                         ),
                       ),
                       IconButton(
@@ -375,28 +480,20 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   TextField(
                     autofocus: true,
                     style: GoogleFonts.inter(fontSize: 13.sp),
                     decoration: InputDecoration(
-                      hintText: context.tr('Search sub groups...'),
+                      hintText: context.tr('Search sub categories...'),
                       hintStyle: GoogleFonts.inter(fontSize: 12.5.sp, color: Colors.grey.shade400),
-                      prefixIcon: Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
                       filled: true,
-                      fillColor: Color(0xFFF8FAFC),
+                      fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
                       ),
                     ),
                     onChanged: (val) {
@@ -431,7 +528,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 24.0),
                             child: Center(
                               child: Text(
-                                context.tr('Please select a Stock Item Group first'),
+                                context.tr('Please select a Category first'),
                                 style: GoogleFonts.inter(fontSize: 13.sp, color: Colors.amber.shade800),
                               ),
                             ),
@@ -441,7 +538,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 24.0),
                             child: Center(
                               child: Text(
-                                context.tr('No sub groups found for this group'),
+                                context.tr('No sub categories found for this category'),
                                 style: GoogleFonts.inter(fontSize: 13.sp, color: Colors.grey.shade500),
                               ),
                             ),
@@ -457,7 +554,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                                 style: GoogleFonts.inter(
                                   fontSize: 13.sp,
                                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isSelected ? Color(0xFF2563EB) : Color(0xFF1E293B),
+                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF1E293B),
                                 ),
                               ),
                               trailing: isSelected
@@ -481,13 +578,153 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
     );
   }
 
+  void _showSupplierSelector() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (ctx, setInnerState) {
+            final filtered = _suppliers.where((s) {
+              final name = (s['name'] ?? '').toString().toLowerCase();
+              return name.contains(searchQuery.toLowerCase());
+            }).toList();
+
+            return Container(
+              height: MediaQuery.of(ctx).size.height * 0.65,
+              padding: EdgeInsets.only(
+                top: 16,
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        context.tr('Select Supplier'),
+                        style: GoogleFonts.inter(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    autofocus: true,
+                    style: GoogleFonts.inter(fontSize: 13.sp),
+                    decoration: InputDecoration(
+                      hintText: context.tr('Search suppliers...'),
+                      hintStyle: GoogleFonts.inter(fontSize: 12.5.sp, color: Colors.grey.shade400),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      setInnerState(() => searchQuery = val);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        ListTile(
+                          dense: true,
+                          title: Text(
+                            context.tr('None / Custom Supplier'),
+                            style: GoogleFonts.inter(
+                              fontSize: 13.sp,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          trailing: _selectedSupplierId == null
+                              ? const Icon(Icons.check, color: Color(0xFF2563EB), size: 18)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _selectedSupplierId = null;
+                            });
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        if (filtered.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24.0),
+                            child: Center(
+                              child: Text(
+                                context.tr('No suppliers found'),
+                                style: GoogleFonts.inter(fontSize: 13.sp, color: Colors.grey.shade500),
+                              ),
+                            ),
+                          )
+                        else
+                          ...filtered.map((s) {
+                            final idStr = s['id']?.toString();
+                            final isSelected = idStr == _selectedSupplierId;
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                s['name'] ?? '',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13.sp,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF1E293B),
+                                ),
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(Icons.check, color: Color(0xFF2563EB), size: 18)
+                                  : null,
+                              onTap: () {
+                                setState(() {
+                                  _selectedSupplierId = idStr;
+                                  _supplierNameController.text = s['name'] ?? '';
+                                });
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _saveStockItem() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedUnit == null || _selectedUnit!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr('Please select a Base Unit')),
+          content: Text(context.tr('Please select a Unit')),
           backgroundColor: Colors.red,
         ),
       );
@@ -501,21 +738,46 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
 
     final payload = <String, dynamic>{
       'item_name': _nameController.text.trim(),
+      'product_code': _productCodeController.text.trim(),
+      'part_number': _partNumberController.text.trim(),
+      'alternate_part_number': _alternatePartNumberController.text.trim(),
       'brand': _brandController.text.trim(),
+      'country_of_origin': _countryOfOriginController.text.trim(),
+      'supplier_id': _selectedSupplierId,
+      'supplier_name': _supplierNameController.text.trim(),
+      'quantity': double.tryParse(_quantityController.text.trim()) ?? 0.0,
       'unit': _selectedUnit,
+      'base_unit': _selectedUnit,
+      'purchase_rate': double.tryParse(_purchaseRateController.text.trim()) ?? 0.0,
+      'selling_price': double.tryParse(_sellingPriceController.text.trim()) ?? 0.0,
       'group_id': _selectedGroupId,
       'sub_group_id': _selectedSubGroupId,
       'expense_head_id': _selectedExpenseHeadId,
-      'hsn_code': _hsnCodeController.text.trim(),
-      'barcode': _barcodeController.text.trim(),
+      'hsn_code': _hsnCode ?? '',
+      'barcode': _barcode ?? '',
       'is_trading': _isTrading,
       'is_operational': _isOperational,
-      'critical_level': double.tryParse(_criticalLevelController.text.trim()) ?? 0.0,
-      'profit_margin_percent': double.tryParse(_profitMarginController.text.trim()) ?? 0.0,
-      'cgst_percent': double.tryParse(_cgstController.text.trim()) ?? 0.0,
-      'sgst_percent': double.tryParse(_sgstController.text.trim()) ?? 0.0,
-      'igst_percent': double.tryParse(_igstController.text.trim()) ?? 0.0,
+      'critical_level': double.tryParse(_criticalLevel ?? '0') ?? 0.0,
+      'profit_margin_percent': double.tryParse(_profitMargin ?? '0') ?? 0.0,
     };
+
+    if (isIndia) {
+      final cgst = double.tryParse(_cgstController.text.trim()) ?? 0.0;
+      final sgst = double.tryParse(_sgstController.text.trim()) ?? 0.0;
+      final igst = double.tryParse(_igstController.text.trim()) ?? (cgst + sgst);
+      payload['cgst_percent'] = cgst;
+      payload['sgst_percent'] = sgst;
+      payload['igst_percent'] = igst;
+      payload['tax_percent'] = igst > 0 ? igst : (cgst + sgst);
+      payload['vat_percent'] = 0.0;
+    } else {
+      final tax = double.tryParse(_taxPercentController.text.trim()) ?? 0.0;
+      payload['cgst_percent'] = 0.0;
+      payload['sgst_percent'] = 0.0;
+      payload['igst_percent'] = tax;
+      payload['vat_percent'] = tax;
+      payload['tax_percent'] = tax;
+    }
 
     try {
       final res = isEdit
@@ -562,7 +824,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
       fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: Color(0xFFCBD5E1)),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
@@ -578,18 +840,18 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
 
   Widget _buildFieldLabel(String label, {bool isRequired = false, String? optionalNote}) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 4.0),
+      padding: const EdgeInsets.only(bottom: 4.0),
       child: RichText(
         text: TextSpan(
-          style: GoogleFonts.inter(fontSize: 12.sp, color: Color(0xFF1E293B), fontWeight: FontWeight.w600),
+          style: GoogleFonts.inter(fontSize: 12.sp, color: const Color(0xFF1E293B), fontWeight: FontWeight.w600),
           children: [
             TextSpan(text: context.tr(label)),
             if (isRequired)
-              TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              const TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             if (optionalNote != null)
               TextSpan(
                 text: ' (${context.tr(optionalNote)})',
-                style: GoogleFonts.inter(fontSize: 10.5.sp, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                style: GoogleFonts.inter(fontSize: 10.5.sp, color: const Color(0xFF94A3B8), fontWeight: FontWeight.normal),
               ),
           ],
         ),
@@ -599,6 +861,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currencySym = CountryConfig.currencySymbol;
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -606,7 +869,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
           isEdit ? context.tr('Edit Stock Item') : context.tr('Create Stock Item'),
           style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16.sp),
         ),
-        backgroundColor: Color(0xFF000080),
+        backgroundColor: const Color(0xFF000080),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -620,12 +883,12 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.03),
                         blurRadius: 8,
-                        offset: Offset(0, 3),
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -633,317 +896,551 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Stock Item Group (Searchable Selector)
-                      _buildFieldLabel('Stock Item Group'),
-                      InkWell(
-                        onTap: _showStockGroupSelector,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Color(0xFFCBD5E1)),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _selectedGroupObj != null ? _selectedGroupObj!['name'] : context.tr('---------'),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13.sp,
-                                    color: _selectedGroupObj != null ? Color(0xFF1E293B) : Colors.grey.shade500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // 2. Sub Group (Searchable Selector)
-                      _buildFieldLabel('Sub Group'),
-                      InkWell(
-                        onTap: _showSubGroupSelector,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Color(0xFFCBD5E1)),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _selectedSubGroupObj != null ? _selectedSubGroupObj!['name'] : context.tr('---------'),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13.sp,
-                                    color: _selectedSubGroupObj != null ? Color(0xFF1E293B) : Colors.grey.shade500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // 3. Item Name *
-                      _buildFieldLabel('Item Name', isRequired: true),
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: _inputDecoration(hintText: 'Enter Item name'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return context.tr('Please enter item name');
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      // 4. Base Unit *
-                      _buildFieldLabel('Base Unit', isRequired: true),
-                      DropdownButtonFormField<String>(
-                        value: _selectedUnit,
-                        isExpanded: true,
-                        decoration: _inputDecoration(hintText: 'Select Base Unit'),
-                        style: GoogleFonts.inter(fontSize: 13.sp, color: Color(0xFF1E293B)),
-                        items: [
-                          DropdownMenuItem<String>(
-                            value: null,
-                            child: Text(context.tr('Select Base Unit'), style: TextStyle(fontSize: 12.5.sp, color: Colors.grey.shade500)),
-                          ),
-                          ..._unitChoices.map((u) {
-                            return DropdownMenuItem<String>(
-                              value: u['value'],
-                              child: Text(context.tr(u['display']!), style: TextStyle(fontSize: 13.sp)),
-                            );
-                          }),
-                        ],
-                        onChanged: (val) {
-                          setState(() => _selectedUnit = val);
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Brand
-                      _buildFieldLabel('Brand', optionalNote: 'non mandatory'),
-                      TextFormField(
-                        controller: _brandController,
-                        decoration: _inputDecoration(hintText: 'Enter Brand name'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 12),
-
-                      // 5. HSN Code
-                      _buildFieldLabel('HSN Code', optionalNote: 'non mandatory'),
-                      TextFormField(
-                        controller: _hsnCodeController,
-                        decoration: _inputDecoration(hintText: 'Enter Hsn code'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 12),
-
-                      // 6. Barcode
-                      _buildFieldLabel('Barcode', optionalNote: 'non mandatory'),
-                      TextFormField(
-                        controller: _barcodeController,
-                        decoration: _inputDecoration(hintText: 'Enter Barcode'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 14),
-
-                      // 7. Trading & Operational Checkboxes
+                      // Header Country & Tax Info Badge (matching Web badge)
                       Container(
-                        width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        margin: const EdgeInsets.only(bottom: 14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: const Color(0xFFEFF6FF),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: const Color(0xFFBFDBFE)),
                         ),
-                        child: Wrap(
-                          alignment: WrapAlignment.start,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 12,
-                          runSpacing: 4,
+                        child: Row(
                           children: [
-                            InkWell(
-                              onTap: () => setState(() => _isTrading = !_isTrading),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Checkbox(
-                                    value: _isTrading,
-                                    activeColor: const Color(0xFF2563EB),
-                                    onChanged: (val) => setState(() => _isTrading = val ?? false),
-                                  ),
-                                  Text(
-                                    context.tr('Trading Item'),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12.5.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            InkWell(
-                              onTap: () => setState(() => _isOperational = !_isOperational),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Checkbox(
-                                    value: _isOperational,
-                                    activeColor: const Color(0xFF2563EB),
-                                    onChanged: (val) => setState(() => _isOperational = val ?? false),
-                                  ),
-                                  Text(
-                                    context.tr('Operational Item'),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12.5.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
-                                    ),
-                                  ),
-                                ],
+                            Text(CountryConfig.flag, style: TextStyle(fontSize: 16.sp)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${CountryConfig.displayName} (${isIndia ? "GST" : "VAT"})',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11.5.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF1E40AF),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
+
+                      // Row 0: Category & Sub Category (Same as Web Row 0)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Category'),
+                                InkWell(
+                                  onTap: _showStockGroupSelector,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            _selectedGroupObj != null ? _selectedGroupObj!['name'] : context.tr('Select Category'),
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12.5.sp,
+                                              color: _selectedGroupObj != null ? const Color(0xFF1E293B) : Colors.grey.shade500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B), size: 20),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Sub Category'),
+                                InkWell(
+                                  onTap: _showSubGroupSelector,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            _selectedSubGroupObj != null ? _selectedSubGroupObj!['name'] : context.tr('Select Sub Category'),
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12.5.sp,
+                                              color: _selectedSubGroupObj != null ? const Color(0xFF1E293B) : Colors.grey.shade500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B), size: 20),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 1: Product Code & Brand (Same as Web Row 1)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Product Code'),
+                                TextFormField(
+                                  controller: _productCodeController,
+                                  decoration: _inputDecoration(hintText: 'Enter Product Code'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Brand'),
+                                TextFormField(
+                                  controller: _brandController,
+                                  decoration: _inputDecoration(hintText: 'Enter Brand'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 1.5: Spare Part No & Alternate No (Same as Web Row 1.5)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Spare Part No'),
+                                TextFormField(
+                                  controller: _partNumberController,
+                                  decoration: _inputDecoration(hintText: 'Enter Spare Part No'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Alternate No'),
+                                TextFormField(
+                                  controller: _alternatePartNumberController,
+                                  decoration: _inputDecoration(hintText: 'Enter Alternate No'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 2: Product Name * & Country of Origin (Same as Web Row 2)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Product Name', isRequired: true),
+                                TextFormField(
+                                  controller: _nameController,
+                                  decoration: _inputDecoration(hintText: 'Enter Product Name'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                  validator: (val) {
+                                    if (val == null || val.trim().isEmpty) {
+                                      return context.tr('Product Name is required');
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Country of Origin'),
+                                TextFormField(
+                                  controller: _countryOfOriginController,
+                                  decoration: _inputDecoration(hintText: 'Enter Country of Origin'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 3: Supplier (Registered) & Supplier Name (or Custom) (Same as Web Row 3)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Supplier (Registered)'),
+                                InkWell(
+                                  onTap: _showSupplierSelector,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            _selectedSupplierObj != null ? _selectedSupplierObj!['name'] : context.tr('Select Supplier'),
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12.5.sp,
+                                              color: _selectedSupplierObj != null ? const Color(0xFF1E293B) : Colors.grey.shade500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B), size: 20),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Supplier Name (or Custom)'),
+                                TextFormField(
+                                  controller: _supplierNameController,
+                                  decoration: _inputDecoration(hintText: 'Enter Supplier Name'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 4: Stock Count & Unit * (Same as Web Row 4)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Stock Count'),
+                                TextFormField(
+                                  controller: _quantityController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: _inputDecoration(hintText: 'Enter Stock Count'),
+                                  style: GoogleFonts.inter(fontSize: 13.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Unit', isRequired: true),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedUnit,
+                                  isExpanded: true,
+                                  decoration: _inputDecoration(hintText: 'Select Unit'),
+                                  style: GoogleFonts.inter(fontSize: 12.5.sp, color: const Color(0xFF1E293B)),
+                                  items: _unitChoices.map((u) {
+                                    return DropdownMenuItem<String>(
+                                      value: u['value'],
+                                      child: Text(u['display'] ?? '', style: TextStyle(fontSize: 12.5.sp)),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    setState(() => _selectedUnit = val);
+                                  },
+                                  validator: (val) => val == null || val.isEmpty ? context.tr('Unit is required') : null,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Row 5: Purchase Rate & Selling Rate * (Same as Web Row 5)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Purchase Rate ($currencySym)'),
+                                TextFormField(
+                                  controller: _purchaseRateController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: _inputDecoration(hintText: 'Enter Purchase Rate'),
+                                  style: GoogleFonts.inter(fontSize: 13.sp),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Selling Rate ($currencySym)', isRequired: true),
+                                TextFormField(
+                                  controller: _sellingPriceController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: _inputDecoration(hintText: 'Enter Selling Rate'),
+                                  style: GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w600),
+                                  validator: (val) {
+                                    if (val == null || val.trim().isEmpty) {
+                                      return context.tr('Selling Rate is required');
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 14),
 
-                      // 8. Tax % Container
+                      // Row 6: Tax Section (Country-Specific) (Same as Web Row 6)
+                      if (isIndia)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.percent, color: Color(0xFF2563EB), size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    context.tr('GST Details (India)'),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'CGST + SGST or IGST',
+                                    style: GoogleFonts.inter(fontSize: 10.sp, color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildFieldLabel('CGST (%)'),
+                                        TextFormField(
+                                          controller: _cgstController,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          decoration: _inputDecoration(hintText: '9.0'),
+                                          style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                          onChanged: _onCgstChanged,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildFieldLabel('SGST (%)'),
+                                        TextFormField(
+                                          controller: _sgstController,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          decoration: _inputDecoration(hintText: '9.0'),
+                                          style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                          onChanged: _onSgstChanged,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildFieldLabel('IGST (%)'),
+                                        TextFormField(
+                                          controller: _igstController,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          decoration: _inputDecoration(hintText: '18.0'),
+                                          style: GoogleFonts.inter(fontSize: 12.5.sp),
+                                          onChanged: _onIgstChanged,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.percent, color: Color(0xFF2563EB), size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    context.tr('Tax (%)'),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              TextFormField(
+                                controller: _taxPercentController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: _inputDecoration(hintText: '5.0'),
+                                style: GoogleFonts.inter(fontSize: 13.sp),
+                              ),
+                             
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+
+                      // Row 7: Trading & Operational Item Toggles (Same as Web Row 7)
                       Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.percent, color: Color(0xFF2563EB), size: 16),
-                                const SizedBox(width: 4),
-                                Text(
-                                  context.tr('Tax %'),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                ),
-                              ],
+                            SwitchListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                context.tr('Trading Item (Yes / No)'),
+                                style: GoogleFonts.inter(fontSize: 12.5.sp, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)),
+                              ),
+                             
+                              value: _isTrading,
+                              activeColor: const Color(0xFF2563EB),
+                              onChanged: (val) => setState(() => _isTrading = val),
                             ),
-                            const SizedBox(height: 10),
-                            _buildFieldLabel('CGST (%)'),
-                            TextFormField(
-                              controller: _cgstController,
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              decoration: _inputDecoration(hintText: '0.0'),
-                              style: GoogleFonts.inter(fontSize: 13.sp),
-                            ),
-                            SizedBox(height: 10),
-                            _buildFieldLabel('SGST / SCGT (%)'),
-                            TextFormField(
-                              controller: _sgstController,
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              decoration: _inputDecoration(hintText: '0.0'),
-                              style: GoogleFonts.inter(fontSize: 13.sp),
-                            ),
-                            SizedBox(height: 10),
-                            _buildFieldLabel('IGST (%)'),
-                            TextFormField(
-                              controller: _igstController,
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              decoration: _inputDecoration(hintText: '0.0'),
-                              style: GoogleFonts.inter(fontSize: 13.sp),
+                            const Divider(height: 1),
+                            SwitchListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                context.tr('Operational Item (Yes / No)'),
+                                style: GoogleFonts.inter(fontSize: 12.5.sp, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)),
+                              ),
+                              
+                              value: _isOperational,
+                              activeColor: const Color(0xFF2563EB),
+                              onChanged: (val) => setState(() => _isOperational = val),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 24),
 
-                      // 9. Profit Margin (%)
-                      _buildFieldLabel('Profit Margin (%)'),
-                      TextFormField(
-                        controller: _profitMarginController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: _inputDecoration(hintText: '0.0'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 12),
-
-                      // 10. Critical Level (non mandatory)
-                      _buildFieldLabel('Critical Level', optionalNote: 'non mandatory'),
-                      TextFormField(
-                        controller: _criticalLevelController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: _inputDecoration(hintText: '0.0'),
-                        style: GoogleFonts.inter(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 12),
-
-                      // 11. Default Expense Head
-                      _buildFieldLabel('Default Expense Head'),
-                      DropdownButtonFormField<String>(
-                        value: _selectedExpenseHeadId,
-                        isExpanded: true,
-                        decoration: _inputDecoration(hintText: '---------'),
-                        style: GoogleFonts.inter(fontSize: 13.sp, color: Color(0xFF1E293B)),
-                        items: [
-                          DropdownMenuItem<String>(
-                            value: null,
-                            child: Text(context.tr('---------'), style: TextStyle(fontSize: 12.5.sp, color: Colors.grey.shade500)),
-                          ),
-                          ..._expenseHeads.map((h) {
-                            final head = Map<String, dynamic>.from(h as Map);
-                            return DropdownMenuItem<String>(
-                              value: head['id']?.toString(),
-                              child: Text(head['name'] ?? '', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
-                            );
-                          }),
-                        ],
-                        onChanged: (val) {
-                          setState(() => _selectedExpenseHeadId = val);
-                        },
-                      ),
-                      const SizedBox(height: 20),
-
-                      // 12. Bottom Action Buttons
+                      // Bottom Action Buttons (Same as Web)
                       SizedBox(
                         width: double.infinity,
                         height: 44.h,
                         child: ElevatedButton.icon(
                           onPressed: _isSaving ? null : _saveStockItem,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(0xFF2563EB),
+                            backgroundColor: const Color(0xFF2563EB),
                             foregroundColor: Colors.white,
                             elevation: 1,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           icon: _isSaving
-                              ? SizedBox(
+                              ? const SizedBox(
                                   height: 16,
                                   width: 16,
                                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                 )
-                              : Icon(Icons.check_circle_outline, size: 18),
+                              : const Icon(Icons.check_circle_outline, size: 18),
                           label: Text(
                             isEdit ? context.tr('Save Changes') : context.tr('Save Stock Item'),
                             style: GoogleFonts.inter(
@@ -953,7 +1450,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                           ),
                         ),
                       ),
-                      SizedBox(height: 10),
+                      const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         height: 40.h,
@@ -968,7 +1465,7 @@ class _StockItemFormScreenState extends State<StockItemFormScreen> {
                             style: GoogleFonts.inter(
                               fontSize: 13.sp,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF475569),
+                              color: const Color(0xFF475569),
                             ),
                           ),
                         ),

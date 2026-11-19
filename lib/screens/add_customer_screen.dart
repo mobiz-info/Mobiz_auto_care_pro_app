@@ -5,10 +5,11 @@ import '../providers/language_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import 'vehicle_make_create_screen.dart';
+import 'vehicle_brand_create_screen.dart';
 
 class AddCustomerScreen extends StatefulWidget {
   final String? phoneNumber;
@@ -64,6 +65,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   // Each entry: {controller, vehicle_type, vehicle_type_model, make, brand_model, color, emission_standard}
   final List<Map<String, dynamic>> _vehicleRows = [];
   final _vehicleRowsNotifier = ValueNotifier<int>(0);
+  bool _showMoreCustomerFields = false;
 
   // Insurance: customer category (motor / non-motor)
   final _customerCategory = ValueNotifier<String>('motor'); // 'motor' or 'non_motor'
@@ -162,8 +164,8 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         _emissionStandards = emissionStandards;
         _fuelTypes = fuelTypes;
         _branches = branches;
-        if (types.isNotEmpty) _selectedCustomerType.value = types.first;
-        if (branches.isNotEmpty) {
+        if (types.isNotEmpty && _selectedCustomerType.value == null) _selectedCustomerType.value = types.first;
+        if (branches.isNotEmpty && _selectedBranch.value == null) {
           if (widget.branchId != null) {
             _selectedBranch.value = branches.firstWhere(
               (b) => b['id']?.toString() == widget.branchId,
@@ -204,6 +206,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       'emission_standard': null,
       'fuel_type': null,
       'wheel_type': 'normal_wheel',
+      'show_more': false,
     });
     _vehicleRowsNotifier.value++;
   }
@@ -284,21 +287,41 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
     // Collect valid vehicles
     final vehicles = <Map<String, dynamic>>[];
-    for (final row in _vehicleRows) {
+    for (var i = 0; i < _vehicleRows.length; i++) {
+      final row = _vehicleRows[i];
       final num = (row['controller'] as TextEditingController).text.trim();
+      final type = row['vehicle_type'] as Map<String, dynamic>?;
       final segment = row['vehicle_type_model'] as Map<String, dynamic>?;
-      if (num.isEmpty || segment == null) continue;
+      if (num.isEmpty) {
+        _showError('Please enter Vehicle Number for Vehicle ${i + 1}.');
+        return;
+      }
+      if (type == null) {
+        _showError('Please select Vehicle Type for Vehicle ${i + 1}.');
+        return;
+      }
+      final make = row['make'] as Map<String, dynamic>?;
+      if (make == null) {
+        _showError('Please select Make for Vehicle ${i + 1}.');
+        return;
+      }
+      final brandModel = row['brand_model'] as Map<String, dynamic>?;
+      if (brandModel == null) {
+        _showError('Please select Model for Vehicle ${i + 1}.');
+        return;
+      }
+      if (segment == null) {
+        _showError('Please select Segment for Vehicle ${i + 1}.');
+        return;
+      }
 
       final vehicleData = <String, dynamic>{
         'vehicle_number': num,
         'vehicle_model_id': segment['id'],
         'wheel_type': row['wheel_type'] ?? 'normal_wheel',
       };
-      final brandModel = row['brand_model'] as Map<String, dynamic>?;
-      if (brandModel != null) vehicleData['brand_model_id'] = brandModel['id'];
-
-      final make = row['make'] as Map<String, dynamic>?;
-      if (make != null) vehicleData['make_id'] = make['id'];
+      vehicleData['brand_model_id'] = brandModel['id'];
+      vehicleData['make_id'] = make['id'];
 
       final color = row['color'] as Map<String, dynamic>?;
       if (color != null) vehicleData['color_id'] = color['id'];
@@ -387,7 +410,37 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               body: loadingForm
                   ? Center(child: CircularProgressIndicator())
                   : errorMsg.isNotEmpty
-                      ? Center(child: Text(errorMsg, style: TextStyle(color: Colors.red)))
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.cloud_off, size: 48, color: Colors.red[300]),
+                                const SizedBox(height: 12),
+                                Text(
+                                  errorMsg,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.red[700], fontSize: 14),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    _errorMessage.value = '';
+                                    _isLoadingForm.value = true;
+                                    _fetchFormData();
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: Text(context.tr('Retry')),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF000080),
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
                       : SingleChildScrollView(
                           padding: EdgeInsets.all(20),
                           child: Column(
@@ -549,10 +602,19 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                                       ),
                                     ),
                                   ],
-                                  SizedBox(height: 14),
-                                  _buildTextField(_emailController, 'Email (Optional)', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
-                                  SizedBox(height: 14),
-                                  _buildTextField(_addressController, 'Address (Optional)', Icons.home_outlined, maxLines: 2),
+                                  const SizedBox(height: 8),
+                                  TextButton.icon(
+                                    onPressed: () => setState(() => _showMoreCustomerFields = !_showMoreCustomerFields),
+                                    icon: Icon(_showMoreCustomerFields ? Icons.expand_less : Icons.expand_more),
+                                    label: Text(_showMoreCustomerFields ? 'Less' : 'More'),
+                                    style: TextButton.styleFrom(foregroundColor: const Color(0xFF000080), alignment: Alignment.centerLeft),
+                                  ),
+                                  if (_showMoreCustomerFields) ...[
+                                    const SizedBox(height: 6),
+                                    _buildTextField(_emailController, 'Email (Optional)', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+                                    const SizedBox(height: 14),
+                                    _buildTextField(_addressController, 'Address (Optional)', Icons.home_outlined, maxLines: 2),
+                                  ],
                                 ],
                               ),
                               SizedBox(height: 16),
@@ -680,6 +742,131 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     );
   }
 
+
+  Future<void> _createNewMake(int vehicleRowIndex) async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const VehicleMakeCreateScreen()),
+    );
+    if (result != null && mounted) {
+      final newId = result['id']?.toString();
+      final newName = result['name']?.toString() ?? '';
+
+      await _fetchFormData();
+
+      Map<String, dynamic>? newMake;
+      for (final m in _makes) {
+        if (m['id']?.toString() == newId) {
+          newMake = m is Map<String, dynamic> ? m : Map<String, dynamic>.from(m);
+          break;
+        }
+      }
+      newMake ??= {'id': newId, 'name': newName};
+
+      if (!_makes.any((m) => m['id']?.toString() == newId)) {
+        _makes.add(newMake);
+      }
+
+      if (vehicleRowIndex < _vehicleRows.length) {
+        _vehicleRows[vehicleRowIndex]['make'] = newMake;
+        _vehicleRows[vehicleRowIndex]['brand_model'] = null;
+        _vehicleRowsNotifier.value++;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Selected Make: $newName'),
+        backgroundColor: const Color(0xFF000080),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  Future<void> _createNewBrandModel(int vehicleRowIndex) async {
+    if (vehicleRowIndex >= _vehicleRows.length) return;
+    final row = _vehicleRows[vehicleRowIndex];
+    final selectedMake = row['make'] as Map<String, dynamic>?;
+    final selectedSegment = row['vehicle_type_model'] as Map<String, dynamic>?;
+
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VehicleBrandCreateScreen(
+          initialMakeId: selectedMake?['id']?.toString(),
+          initialMakeName: selectedMake?['name']?.toString(),
+          initialSegmentId: selectedSegment?['id']?.toString(),
+          initialSegmentName: selectedSegment?['name']?.toString(),
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      final newId = result['id']?.toString();
+      final newName = result['name']?.toString() ?? '';
+      final makeId = result['make_id']?.toString() ?? selectedMake?['id']?.toString();
+      final segmentId = result['vehicle_type_model_id']?.toString() ?? selectedSegment?['id']?.toString();
+
+      await _fetchFormData();
+
+      Map<String, dynamic>? newBrand;
+      for (final b in _brandModels) {
+        if (b['id']?.toString() == newId) {
+          newBrand = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b);
+          break;
+        }
+      }
+      newBrand ??= {
+        'id': newId,
+        'name': newName,
+        'make_id': makeId,
+        'vehicle_type_model_id': segmentId,
+      };
+
+      if (!_brandModels.any((b) => b['id']?.toString() == newId)) {
+        _brandModels.add(newBrand);
+      }
+
+      if (vehicleRowIndex < _vehicleRows.length) {
+        _vehicleRows[vehicleRowIndex]['brand_model'] = newBrand;
+
+        if (makeId != null && makeId.isNotEmpty) {
+          for (final mk in _makes) {
+            if (mk['id']?.toString() == makeId) {
+              _vehicleRows[vehicleRowIndex]['make'] = mk;
+              break;
+            }
+          }
+        }
+
+        if (segmentId != null && segmentId.isNotEmpty) {
+          for (final seg in _vehicleTypeModels) {
+            if (seg['id']?.toString() == segmentId) {
+              _vehicleRows[vehicleRowIndex]['vehicle_type_model'] = seg;
+              final vtId = seg['vehicle_type_id']?.toString();
+              if (vtId != null && vtId.isNotEmpty) {
+                for (final vt in _vehicleTypes) {
+                  if (vt['id']?.toString() == vtId) {
+                    _vehicleRows[vehicleRowIndex]['vehicle_type'] = vt;
+                    break;
+                  }
+                }
+              }
+              break;
+            }
+          }
+        }
+
+        _vehicleRowsNotifier.value++;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Selected Model: $newName'),
+        backgroundColor: const Color(0xFF000080),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   Widget _buildCard({
     required String title,
     required IconData icon,
@@ -803,14 +990,14 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+        _buildFormLabel(label, required: required),
         SizedBox(height: 6),
         Container(
           padding: EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: required ? Colors.red.shade400 : Colors.grey.shade300),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<T>(
@@ -832,6 +1019,20 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     );
   }
 
+  Widget _buildFormLabel(String label, {double? fontSize, bool required = false}) {
+    final cleanLabel = label.replaceFirst(RegExp(r'\s*\*$'), '');
+    final showRequired = required || cleanLabel != label;
+    return Text.rich(
+      TextSpan(
+        style: GoogleFonts.inter(fontSize: fontSize ?? 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+        children: [
+          TextSpan(text: context.tr(cleanLabel)),
+          if (showRequired) TextSpan(text: ' *', style: const TextStyle(color: Colors.red)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchableDropdown<T>({
     required String label,
     required String title,
@@ -840,6 +1041,9 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     required String Function(T) labelBuilder,
     required void Function(T?)? onChanged,
     String? hint,
+    bool required = false,
+    VoidCallback? onAddNew,
+    String? addNewText,
   }) {
     String displayLabel = hint ?? 'Select $title...';
     bool hasValue = false;
@@ -865,19 +1069,42 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildFormLabel(label, required: required),
+            if (onAddNew != null)
+              GestureDetector(
+                onTap: onAddNew,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_circle, size: 14.sp, color: const Color(0xFF000080)),
+                      const SizedBox(width: 4),
+                      Text(
+                        addNewText ?? '+ Add',
+                        style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w700, color: const Color(0xFF000080)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 6),
         InkWell(
-          onTap: (items.isEmpty || onChanged == null)
+          onTap: (onChanged == null)
               ? null
-              : () => _showSearchableModal<T>(title, items, labelBuilder, onChanged),
+              : () => _showSearchableModal<T>(title, items, labelBuilder, onChanged, onAddNew: onAddNew, addNewText: addNewText),
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: required ? Colors.red.shade400 : Colors.grey.shade300),
             ),
             child: Row(
               children: [
@@ -905,8 +1132,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     String title,
     List<T> items,
     String Function(T) labelBuilder,
-    void Function(T?) onChanged,
-  ) {
+    void Function(T?) onChanged, {
+    VoidCallback? onAddNew,
+    String? addNewText,
+  }) {
     final searchNotifier = ValueNotifier<String>('');
     showModalBottomSheet(
       context: context,
@@ -925,7 +1154,21 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Select $title', style: GoogleFonts.inter(fontSize: 17.sp, fontWeight: FontWeight.bold, color: const Color(0xFF000080))),
-                IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onAddNew != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          onAddNew();
+                        },
+                        icon: const Icon(Icons.add_circle, size: 16, color: Color(0xFF000080)),
+                        label: Text(addNewText ?? 'Add New', style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: const Color(0xFF000080), fontSize: 13.sp)),
+                      ),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -948,7 +1191,37 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                 builder: (_, query, __) {
                   final filtered = items.where((item) => labelBuilder(item).toLowerCase().contains(query)).toList();
                   if (filtered.isEmpty) {
-                    return Center(child: Text('No results found', style: GoogleFonts.inter(color: Colors.grey)));
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('No $title found', style: GoogleFonts.inter(color: Colors.grey.shade600, fontSize: 14.sp)),
+                            if (onAddNew != null) ...[
+                              const SizedBox(height: 12),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  onAddNew();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF000080),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                ),
+                                icon: const Icon(Icons.add, size: 18),
+                                label: Text(
+                                  query.isNotEmpty ? 'Create "$query"' : (addNewText ?? 'Create New $title'),
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
                   }
                   return ListView.builder(
                     itemCount: filtered.length,
@@ -982,10 +1255,19 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     final selectedColor = row['color'] as Map<String, dynamic>?;
     final selectedEmission = row['emission_standard'] as Map<String, dynamic>?;
     final selectedFuelType = row['fuel_type'] as Map<String, dynamic>?;
+    final showMore = row['show_more'] == true;
 
     final segments = _segmentsForType(selectedType?['id']?.toString());
-    final makes = _makesForTypeAndSegment(selectedType?['id']?.toString(), selectedSegment?['id']?.toString());
-    final brands = _brandModelsForSegmentAndMake(selectedSegment?['id']?.toString(), selectedMake?['id']?.toString());
+    final rawMakes = _makesForTypeAndSegment(selectedType?['id']?.toString(), selectedSegment?['id']?.toString());
+    final makes = List<dynamic>.from(rawMakes);
+    if (selectedMake != null && !makes.any((m) => m['id']?.toString() == selectedMake['id']?.toString())) {
+      makes.insert(0, selectedMake);
+    }
+    final rawBrands = _brandModelsForSegmentAndMake(selectedSegment?['id']?.toString(), selectedMake?['id']?.toString());
+    final brands = List<dynamic>.from(rawBrands);
+    if (selectedBrand != null && !brands.any((b) => b['id']?.toString() == selectedBrand['id']?.toString())) {
+      brands.insert(0, selectedBrand);
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1015,15 +1297,41 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             ),
             const SizedBox(height: 14),
 
+            // Vehicle number is the first required vehicle field.
+            _buildFormLabel('Vehicle Number', fontSize: 12.sp, required: true),
+            const SizedBox(height: 6),
+            TextField(
+              controller: row['controller'] as TextEditingController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                hintText: 'Enter Vehicle Number',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.red.shade400)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.red.shade400)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.red.shade700)),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+
             // 1. Vehicle Type
             _buildDropdown<Map<String, dynamic>>(
-              label: 'Vehicle Type *',
+              label: 'Vehicle Type',
+              required: true,
               value: selectedType,
               items: _vehicleTypes.cast<Map<String, dynamic>>(),
               labelBuilder: (vt) => vt['name'],
               hint: 'Select vehicle type',
               onChanged: (val) {
                 row['vehicle_type'] = val;
+                final segmentTypeId = row['vehicle_type_model']?['vehicle_type_id']?.toString();
+                if (segmentTypeId != null && segmentTypeId != val?['id']?.toString()) {
+                  row['vehicle_type_model'] = null;
+                  row['make'] = null;
+                  row['brand_model'] = null;
+                }
                 final validMakes = _makesForTypeAndSegment(val?['id']?.toString(), row['vehicle_type_model']?['id']?.toString());
                 if (row['make'] != null && !validMakes.any((m) => m['id']?.toString() == row['make']?['id']?.toString())) {
                   row['make'] = null;
@@ -1037,12 +1345,15 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             // 2. Make (Searchable Dropdown)
             _buildSearchableDropdown<Map<String, dynamic>>(
               label: 'Vehicle Make',
+              required: true,
               title: 'Make',
               value: selectedMake,
               items: makes.cast<Map<String, dynamic>>(),
               labelBuilder: (b) => b['name']?.toString() ?? '',
-              hint: makes.isEmpty ? 'No makes available' : 'Select Make (e.g. Maruti, Hyundai)...',
-              onChanged: makes.isEmpty ? null : (val) {
+              hint: 'Select Make (e.g. Maruti, Hyundai)...',
+              onAddNew: () => _createNewMake(index),
+              addNewText: '+ Add Make',
+              onChanged: (val) {
                 row['make'] = val;
                 row['brand_model'] = null;
                 _vehicleRowsNotifier.value++;
@@ -1053,12 +1364,15 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             // 3. Brand / Model (Searchable Dropdown)
             _buildSearchableDropdown<Map<String, dynamic>>(
               label: 'Brand / Model',
+              required: true,
               title: 'Brand Model',
               value: selectedBrand,
               items: brands.cast<Map<String, dynamic>>(),
               labelBuilder: (b) => b['name']?.toString() ?? '',
-              hint: brands.isEmpty ? 'No models available' : 'Select Model (e.g. Swift, Creta)...',
-              onChanged: brands.isEmpty ? null : (val) {
+              hint: 'Select Model (e.g. Swift, Creta)...',
+              onAddNew: () => _createNewBrandModel(index),
+              addNewText: '+ Add Model',
+              onChanged: (val) {
                 row['brand_model'] = val;
                 if (val != null) {
                   // Auto-populate Make if missing
@@ -1101,7 +1415,8 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             // 4. Segment (Auto-populated or manually selected)
             if (segments.isNotEmpty) ...[
               _buildDropdown<Map<String, dynamic>>(
-                label: 'Segment *',
+                label: 'Segment',
+                required: true,
                 value: selectedSegment,
                 items: segments.cast<Map<String, dynamic>>(),
                 labelBuilder: (m) => m['name'],
@@ -1114,118 +1429,67 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               const SizedBox(height: 12),
             ],
 
-            // Color (optional)
-            if (selectedType != null) ...[
-              _buildDropdown<Map<String, dynamic>>(
-                label: 'Color (Optional)',
-                value: selectedColor,
-                items: [{'id': '', 'name': 'None'}, ..._colors.cast<Map<String, dynamic>>()],
-                labelBuilder: (c) => c['name'],
-                hint: 'Select color',
-                onChanged: (val) {
-                  row['color'] = (val?['id'] == '') ? null : val;
-                  _vehicleRowsNotifier.value++;
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Emission Standard (optional)
-            if (_emissionStandards.isNotEmpty) ...[
-              _buildDropdown<Map<String, dynamic>>(
-                label: 'Emission Standard (Optional)',
-                value: selectedEmission,
-                items: [{'id': '', 'name': 'None'}, ..._emissionStandards.cast<Map<String, dynamic>>()],
-                labelBuilder: (e) => e['name']?.toString() ?? '',
-                hint: 'Select emission standard',
-                onChanged: (val) {
-                  row['emission_standard'] = (val?['id'] == '') ? null : val;
-                  _vehicleRowsNotifier.value++;
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Fuel Type (optional)
-            if (_fuelTypes.isNotEmpty) ...[
-              _buildDropdown<Map<String, dynamic>>(
-                label: 'Fuel Type (Optional)',
-                value: selectedFuelType,
-                items: [{'id': '', 'name': 'None'}, ..._fuelTypes.cast<Map<String, dynamic>>()],
-                labelBuilder: (f) => f['name']?.toString() ?? '',
-                hint: 'Select fuel type',
-                onChanged: (val) {
-                  row['fuel_type'] = (val?['id'] == '') ? null : val;
-                  _vehicleRowsNotifier.value++;
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Vehicle Number
-            Text('Vehicle Number *', style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-            SizedBox(height: 6),
-            TextField(
-              controller: row['controller'] as TextEditingController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                hintText: 'Enter Vehicle Number',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: Color(0xFF000080))),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                isDense: true,
-              ),
+            TextButton.icon(
+              onPressed: () {
+                row['show_more'] = !showMore;
+                _vehicleRowsNotifier.value++;
+              },
+              icon: Icon(showMore ? Icons.expand_less : Icons.expand_more),
+              label: Text(showMore ? 'Less' : 'More vehicle options'),
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFF000080), alignment: Alignment.centerLeft),
             ),
-            SizedBox(height: 12),
-
-            // Wheel Type selection
-            Text('Wheel Type *', style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-            SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: RadioListTile<String>(
-                    title: Text(
-                      context.tr('Alloy Wheel'),
-                      style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500),
-                    ),
-                    value: 'alloy_wheel',
-                    groupValue: row['wheel_type'] ?? 'normal_wheel',
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    activeColor: const Color(0xFF000080),
-                    onChanged: (val) {
-                      if (val != null) {
-                        row['wheel_type'] = val;
-                        _vehicleRowsNotifier.value++;
-                      }
-                    },
-                  ),
+            if (showMore) ...[
+              if (_colors.isNotEmpty) ...[
+                _buildDropdown<Map<String, dynamic>>(
+                  label: 'Color (Optional)',
+                  value: selectedColor,
+                  items: [{'id': '', 'name': 'None'}, ..._colors.cast<Map<String, dynamic>>()],
+                  labelBuilder: (c) => c['name'],
+                  hint: 'Select color',
+                  onChanged: (val) {
+                    row['color'] = (val?['id'] == '') ? null : val;
+                    _vehicleRowsNotifier.value++;
+                  },
                 ),
-                Expanded(
-                  child: RadioListTile<String>(
-                    title: Text(
-                      context.tr('Normal Wheel'),
-                      style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500),
-                    ),
-                    value: 'normal_wheel',
-                    groupValue: row['wheel_type'] ?? 'normal_wheel',
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    activeColor: const Color(0xFF000080),
-                    onChanged: (val) {
-                      if (val != null) {
-                        row['wheel_type'] = val;
-                        _vehicleRowsNotifier.value++;
-                      }
-                    },
-                  ),
-                ),
+                const SizedBox(height: 12),
               ],
-            ),
+              if (_emissionStandards.isNotEmpty) ...[
+                _buildDropdown<Map<String, dynamic>>(
+                  label: 'Emission Standard (Optional)',
+                  value: selectedEmission,
+                  items: [{'id': '', 'name': 'None'}, ..._emissionStandards.cast<Map<String, dynamic>>()],
+                  labelBuilder: (e) => e['name']?.toString() ?? '',
+                  hint: 'Select emission standard',
+                  onChanged: (val) {
+                    row['emission_standard'] = (val?['id'] == '') ? null : val;
+                    _vehicleRowsNotifier.value++;
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_fuelTypes.isNotEmpty) ...[
+                _buildDropdown<Map<String, dynamic>>(
+                  label: 'Fuel Type (Optional)',
+                  value: selectedFuelType,
+                  items: [{'id': '', 'name': 'None'}, ..._fuelTypes.cast<Map<String, dynamic>>()],
+                  labelBuilder: (f) => f['name']?.toString() ?? '',
+                  hint: 'Select fuel type',
+                  onChanged: (val) {
+                    row['fuel_type'] = (val?['id'] == '') ? null : val;
+                    _vehicleRowsNotifier.value++;
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              Text('Wheel Type (Optional)', style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(child: RadioListTile<String>(title: Text(context.tr('Alloy Wheel'), style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500)), value: 'alloy_wheel', groupValue: row['wheel_type'] ?? 'normal_wheel', contentPadding: EdgeInsets.zero, dense: true, activeColor: const Color(0xFF000080), onChanged: (val) { if (val != null) { row['wheel_type'] = val; _vehicleRowsNotifier.value++; } })),
+                  Expanded(child: RadioListTile<String>(title: Text(context.tr('Normal Wheel'), style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500)), value: 'normal_wheel', groupValue: row['wheel_type'] ?? 'normal_wheel', contentPadding: EdgeInsets.zero, dense: true, activeColor: const Color(0xFF000080), onChanged: (val) { if (val != null) { row['wheel_type'] = val; _vehicleRowsNotifier.value++; } })),
+                ],
+              ),
+            ],
           ],
         ),
       ),

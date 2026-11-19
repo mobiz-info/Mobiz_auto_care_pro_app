@@ -313,7 +313,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                       ),
                       pw.Text(
                         '${_formatDate(_value(receipt['date']))} ${_value(receipt['time'])}',
-                        style: const pw.TextStyle(
+                        style: pw.TextStyle(
                           fontSize: 11,
                           color: PdfColors.grey600,
                         ),
@@ -344,7 +344,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                       ),
                       pw.Text(
                         customerPhone,
-                        style: const pw.TextStyle(
+                        style: pw.TextStyle(
                           fontSize: 11,
                           color: PdfColors.grey700,
                         ),
@@ -369,7 +369,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                       ),
                       pw.Text(
                         vehicleModel,
-                        style: const pw.TextStyle(
+                        style: pw.TextStyle(
                           fontSize: 11,
                           color: PdfColors.grey700,
                         ),
@@ -408,7 +408,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
               pw.Center(
                 child: pw.Text(
                   'Thank you!',
-                  style: const pw.TextStyle(
+                  style: pw.TextStyle(
                     fontSize: 11,
                     color: PdfColors.grey600,
                   ),
@@ -435,7 +435,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(label, style: const pw.TextStyle(color: PdfColors.grey700)),
+        pw.Text(label, style: pw.TextStyle(color: PdfColors.grey700)),
         pw.Text(
           value,
           style: pw.TextStyle(
@@ -739,7 +739,8 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
         DropdownMenuItem<String>(value: '', child: Text(context.tr('All payment modes'))),
         DropdownMenuItem<String>(value: 'cash', child: Text(context.tr('Cash'))),
         DropdownMenuItem<String>(value: 'card', child: Text(context.tr('Card'))),
-        DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
+        if (!CountryConfig.isUAE)
+          DropdownMenuItem<String>(value: 'digital_payments', child: Text(context.tr('Digital payments'))),
       ],
       onChanged: (value) {
         _selectedPaymentMode.value = value == null || value.isEmpty ? null : value;

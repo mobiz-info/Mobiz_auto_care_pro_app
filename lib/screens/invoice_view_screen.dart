@@ -40,6 +40,12 @@ class InvoiceViewScreen extends StatelessWidget {
     return d.toStringAsFixed(2);
   }
 
+  double _toDouble(dynamic value, [double fallback = 0.0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? fallback;
+  }
+
   String _getServiceDetailText(Map<String, dynamic> svc, String currencySymbol) {
     final detail = svc['service_detail'] as Map<String, dynamic>?;
     if (detail == null) return '';
@@ -75,16 +81,6 @@ class InvoiceViewScreen extends StatelessWidget {
         parts.add('Filter: $filterText${priceStr.isNotEmpty ? " ($priceStr)" : ""}');
       }
 
-      final odo = detail['odometer_at_service']?.toString();
-      if (odo != null && odo.isNotEmpty && odo != '0') {
-        parts.add('Odometer: $odo km');
-      }
-
-      final nextKm = detail['next_oil_change_km']?.toString();
-      if (nextKm != null && nextKm.isNotEmpty && nextKm != '0') {
-        parts.add('Next Change: $nextKm km');
-      }
-
       return parts.join(' | ');
     } else if (cat == 'tyre_change') {
       final parts = <String>[];
@@ -101,32 +97,14 @@ class InvoiceViewScreen extends StatelessWidget {
           parts.add('Tyre: $labelParts x$qty$priceStr');
         }
       }
-      final odo = detail['odometer_at_service']?.toString();
-      if (odo != null && odo.isNotEmpty && odo != '0') parts.add('Odometer: $odo km');
-      final nextKm = detail['next_tyre_change_km']?.toString();
-      if (nextKm != null && nextKm.isNotEmpty && nextKm != '0') parts.add('Next Change: $nextKm km');
       return parts.join(' | ');
     } else if (cat == 'wheel_alignment') {
       final parts = <String>[];
-      final odo = detail['odometer_at_service']?.toString();
-      if (odo != null && odo.isNotEmpty && odo != '0') parts.add('Odometer: $odo km');
-      final nextKm = detail['next_alignment_km']?.toString();
-      if (nextKm != null && nextKm.isNotEmpty && nextKm != '0') parts.add('Next Alignment: $nextKm km');
       final notes = detail['alignment_notes']?.toString();
       if (notes != null && notes.isNotEmpty) parts.add('Notes: $notes');
       return parts.join(' | ');
     } else if (cat == 'car_detailing' || cat == 'detailing') {
-      final parts = <String>[];
-      final wVal = detail['warranty_value']?.toString();
-      final wUnit = detail['warranty_unit']?.toString() ?? 'month';
-      final wText = detail['warranty_text']?.toString();
-      if (wText != null && wText.isNotEmpty) {
-        parts.add('Warranty: $wText');
-      } else if (wVal != null && wVal.isNotEmpty && wVal != '0') {
-        final unitText = wUnit == 'year' ? (wVal == '1' ? 'Year' : 'Years') : (wVal == '1' ? 'Month' : 'Months');
-        parts.add('Warranty: $wVal $unitText');
-      }
-      return parts.join(' | ');
+      return '';
     }
     return '';
   }
@@ -159,7 +137,7 @@ class InvoiceViewScreen extends StatelessWidget {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+          pw.Text(label, style: pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
           pw.Text(value,
               style: pw.TextStyle(
                   fontSize: 11,
@@ -170,9 +148,25 @@ class InvoiceViewScreen extends StatelessWidget {
     );
   }
 
+  Map<String, dynamic> _getInvoiceMap() {
+    final inv = Map<String, dynamic>.from(invoiceData);
+    if (!inv.containsKey('customer') || inv['customer'] == null) {
+      inv['customer'] = customer;
+    }
+    if (!inv.containsKey('vehicle') || inv['vehicle'] == null) {
+      inv['vehicle'] = vehicle;
+    }
+    if (!inv.containsKey('invoice_number') || inv['invoice_number'] == null) {
+      inv['invoice_number'] = invoiceNumber;
+    }
+    return inv;
+  }
+
   // ── PDF generation ────────────────────────────────────────────────────────
   Future<Uint8List> _getInvoicePdfBytes(BuildContext context) async {
-    final cleanInvoiceNo = invoiceNumber.replaceAll('/', '_');
+    final inv = _getInvoiceMap();
+    final invNo = (inv['invoice_number'] ?? invoiceNumber).toString();
+    final cleanInvoiceNo = invNo.replaceAll('/', '_');
     final baseUrl = ApiService.baseUrl.replaceAll('/api', '');
     final pdfUrl = "$baseUrl/media/invoices/invoice-$cleanInvoiceNo.pdf?t=${DateTime.now().millisecondsSinceEpoch}";
     try {
@@ -184,66 +178,80 @@ class InvoiceViewScreen extends StatelessWidget {
         return response.bodyBytes;
       }
     } catch (_) {}
+
+    final invId = inv['id']?.toString() ?? '';
+    if (invId.isNotEmpty) {
+      try {
+        final directUrl = "$baseUrl/invoices/$invId/pdf/?t=${DateTime.now().millisecondsSinceEpoch}";
+        final response = await http.get(
+          Uri.parse(directUrl),
+          headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+        );
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          return response.bodyBytes;
+        }
+      } catch (_) {}
+    }
+
     final localPdf = await _generateInvoicePdf(context);
     return localPdf.save();
   }
 
   Future<pw.Document> _generateInvoicePdf(BuildContext context) async {
-    final currencySymbol = context.read<AuthProvider>().currencySymbol;
-
-    // Load NotoSans from bundled assets — supports ₹ (U+20B9) and full Unicode.
+    final inv = _getInvoiceMap();
     final fontData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
     final notoFont = pw.Font.ttf(fontData);
 
+    final invNo = (inv['invoice_number'] ?? invoiceNumber).toString();
     final pdf = pw.Document(
-      title: invoiceNumber,
+      title: invNo,
       theme: pw.ThemeData.withFont(
         base: notoFont,
         bold: notoFont,
       ),
     );
 
-    final services     = invoiceData['services']      as List<dynamic>? ?? [];
-    final tradingItems = invoiceData['trading_items']  as List<dynamic>? ?? [];
-    final taxes        = invoiceData['taxes']          as List<dynamic>? ?? [];
-    final subtotal     = invoiceData['subtotal']       ?? '0.00';
-    final discount     = invoiceData['discount']       ?? '0.00';
-    final taxAmount    = invoiceData['tax_amount']     ?? '0.00';
-    final total        = invoiceData['total']          ?? '0.00';
-
-    final displayItems = <Map<String, dynamic>>[];
+    final services = inv['services'] as List<dynamic>? ?? [];
+    final tradingItems = inv['trading_items'] as List<dynamic>? ?? [];
+    final allItems = <Map<String, dynamic>>[];
     for (final s in services) {
-      final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
-      final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
-      displayItems.add({
-        'name': '${s['name'] ?? ''}$qtyStr',
-        'rate': (s['rate'] as num?)?.toDouble() ?? 0.0,
-        'discount': (s['discount'] as num?)?.toDouble() ?? 0.0,
-        'raw_service': s,
-        'is_operational': false,
+      final qty = _toDouble(s['qty'], 1.0);
+      final rate = _toDouble(s['rate'], 0.0);
+      final net = _toDouble(s['net_taxable_amount'], qty * rate);
+      final qtyStr = qty > 1 ? qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1) : '1';
+      allItems.add({
+        'name': s['name'] ?? '',
+        'qty': qtyStr,
+        'rate': _fmt(rate),
+        'net': _fmt(net),
+        'raw_rate': rate,
       });
     }
     for (final t in tradingItems) {
-      final isOp = t['is_operational'] == true;
-      if (isOp) continue;
-      final qty = (t['qty'] as num?)?.toDouble() ?? 1.0;
-      final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
-      final name = '${t['item_name'] ?? 'Stock Item'}$qtyStr';
-      displayItems.add({
-        'name': name,
-        'rate': (t['rate'] as num?)?.toDouble() ?? 0.0,
-        'discount': (t['discount'] as num?)?.toDouble() ?? 0.0,
-        'is_operational': false,
+      if (t['is_operational'] == true) continue;
+      final qty = _toDouble(t['qty'], 1.0);
+      final rate = _toDouble(t['rate'], 0.0);
+      final disc = _toDouble(t['discount'], 0.0);
+      final net = (qty * rate) - disc;
+      final qtyStr = qty > 1 ? qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1) : '1';
+      allItems.add({
+        'name': t['item_name'] ?? 'Stock Item',
+        'qty': qtyStr,
+        'rate': _fmt(rate),
+        'net': _fmt(net),
+        'raw_rate': rate,
       });
     }
-
-    final bool hasAnyDiscount = displayItems.any(
-      (s) => ((s['discount'] as num?)?.toDouble() ?? 0.0) > 0,
-    );
+    // Sort services/items in PDF from price high to low
+    allItems.sort((a, b) {
+      final rateA = _toDouble(a['raw_rate'], 0.0);
+      final rateB = _toDouble(b['raw_rate'], 0.0);
+      return rateB.compareTo(rateA);
+    });
 
     pw.ImageProvider? logoImage;
     try {
-      final logoUrl = invoiceData['company_logo'] as String? ?? context.read<AuthProvider>().companyLogo ?? '';
+      final logoUrl = inv['company_logo'] as String? ?? context.read<AuthProvider>().companyLogo ?? '';
       if (logoUrl.isNotEmpty) {
         final response = await http.get(Uri.parse(logoUrl));
         if (response.statusCode == 200) {
@@ -254,347 +262,295 @@ class InvoiceViewScreen extends StatelessWidget {
 
     if (logoImage == null) {
       try {
-        final logoData = await rootBundle.load('assets/icons/Wash-Pilot_Blue-Icon.png');
+        final logoData = await rootBundle.load('assets/icons/mobiz_autocare_mark_blue.png');
         logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
       } catch (_) {}
     }
 
+    pw.ImageProvider? sealImage;
+    try {
+      final sealUrl = (inv['company_seal'] ?? inv['company_seal_url']) as String? ?? '';
+      if (sealUrl.isNotEmpty) {
+        final response = await http.get(Uri.parse(sealUrl));
+        if (response.statusCode == 200) {
+          sealImage = pw.MemoryImage(response.bodyBytes);
+        }
+      }
+    } catch (_) {}
+
     final String customerBranch = customer['branch']?.toString() ?? '';
-    final String invoiceBranch = invoiceData['branch']?.toString() ?? '';
+    final String invoiceBranch = inv['branch']?.toString() ?? '';
     final String authBranch = context.read<AuthProvider>().branchName ?? '';
-    final String branchName = customerBranch.isNotEmpty 
-        ? customerBranch 
-        : (invoiceBranch.isNotEmpty 
-            ? invoiceBranch 
+    final String branchName = customerBranch.isNotEmpty
+        ? customerBranch
+        : (invoiceBranch.isNotEmpty
+            ? invoiceBranch
             : (authBranch.isNotEmpty ? authBranch : 'our service'));
 
     final companyName = context.read<AuthProvider>().companyName ?? 'Mobiz Autocare Pro';
-    final branchAddress = invoiceData['branch_address']?.toString() ?? '';
-    final branchPhone = invoiceData['branch_phone']?.toString() ?? '';
-    final branchEmail = invoiceData['branch_email']?.toString() ?? '';
-    final branchGst = invoiceData['branch_gst']?.toString() ?? '';
-    final dateStr = invoiceData['date']?.toString() ?? '';
+    final branchAddress = inv['branch_address']?.toString() ?? '';
+    final branchPhone = inv['branch_phone']?.toString() ?? '';
+    final branchEmail = inv['branch_email']?.toString() ?? '';
+    final branchGst = inv['branch_gst']?.toString() ?? '';
+    final dateStr = inv['date']?.toString() ?? '';
+    final customisation = (inv['customisation'] as Map<String, dynamic>?) ?? {};
+    final String nonTaxTitle = (customisation['non_tax_title'] ?? 'PROFORMA INVOICE').toString().trim();
+    final bool showVehicleNumber = customisation['show_vehicle_number'] != false;
+    final bool showVehicleMake = customisation['show_vehicle_make'] != false;
+    final bool showVehicleModel = customisation['show_vehicle_model'] != false;
+    final bool showVehicleSegment = customisation['show_vehicle_segment'] != false;
+    final bool showVehicleType = customisation['show_vehicle_type'] != false;
+    final bool showVehicleColor = customisation['show_vehicle_color'] != false;
+    final bool showVehicleFuelType = customisation['show_vehicle_fuel_type'] != false;
+    final bool showVehicleWheelType = customisation['show_vehicle_wheel_type'] != false;
+    final bool showVehicleEmissionStd = customisation['show_vehicle_emission_std'] != false;
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(36),
-        build: (pw.Context ctx) {
-          return pw.Column(
+    final String companyTrn = (inv['company_trn'] ?? inv['branch_gst'] ?? branchGst).toString().trim();
+    final String custTrn = (customer['tax_number'] ?? customer['tin_number'] ?? customer['trn'] ?? inv['customer_tax_number'] ?? inv['customer_tin_number'] ?? '').toString().trim();
+
+    String paymentMode = (inv['payment_mode'] ?? '').toString().trim();
+    if (paymentMode.isEmpty) {
+      if (inv['invoice_type'] == 'creditinvoice' || inv['sales_type'] == 'credit') {
+        paymentMode = 'Credit';
+      } else if (inv['invoice_type'] == 'cashinvoice' || inv['sales_type'] == 'cash') {
+        paymentMode = 'Cash';
+      }
+    } else {
+      paymentMode = paymentMode.replaceAll('_', ' ');
+      paymentMode = paymentMode.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+    }
+
+    final symbol = context.read<AuthProvider>().currencySymbol;
+
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      build: (pw.Context ctx) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // Header
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Expanded(
-                    child: pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        if (logoImage != null) ...[
-                          pw.Image(logoImage, width: 55, height: 55, fit: pw.BoxFit.contain),
-                          pw.SizedBox(width: 12),
-                        ],
-                        pw.Expanded(
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(companyName.toUpperCase(),
-                                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                              pw.Text(branchName,
-                                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
-                              if (branchAddress.isNotEmpty)
-                                pw.Text(branchAddress, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-                              if (branchPhone.isNotEmpty)
-                                pw.Text("Phone: $branchPhone", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-                              if (branchEmail.isNotEmpty)
-                                pw.Text("Email: $branchEmail", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-                              if (branchGst.isNotEmpty)
-                                pw.Text("GSTIN: $branchGst", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(width: 20),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                          ((double.tryParse(invoiceData['tax_amount']?.toString() ?? '0') ?? 0.0) > 0 || (invoiceData['taxes'] is List && (invoiceData['taxes'] as List).isNotEmpty))
-                              ? 'TAX INVOICE'
-                              : 'PROFORMA INVOICE',
-                          style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(invoiceNumber,
-                          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
-                      pw.Text(
-                          invoiceData['invoice_type'] == 'creditinvoice' ? 'Credit Invoice' : 'Cash Invoice',
-                          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-                      if (dateStr.isNotEmpty)
-                        pw.Text(dateStr, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 4),
-              pw.Divider(color: PdfColors.indigo900, thickness: 2),
-              pw.SizedBox(height: 16),
-
-              // Customer & Vehicle
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('BILLED TO',
-                            style: pw.TextStyle(
-                                fontSize: 9,
-                                color: PdfColors.grey600,
-                                fontWeight: pw.FontWeight.bold,
-                                letterSpacing: 0.5)),
-                        pw.SizedBox(height: 4),
-                        pw.Text(customer['name'] ?? '',
-                            style: pw.TextStyle(
-                                fontSize: 13,
-                                fontWeight: pw.FontWeight.bold)),
-                        if ((customer['phone'] ?? '').toString().isNotEmpty)
-                          pw.Text(customer['phone'].toString(),
-                              style: const pw.TextStyle(
-                                  fontSize: 10, color: PdfColors.grey700)),
-                        if ((customer['address'] ?? '').toString().isNotEmpty)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.only(top: 2, right: 10),
-                            child: pw.Text(customer['address'].toString(),
-                                style: const pw.TextStyle(
-                                    fontSize: 9, color: PdfColors.grey700)),
-                          ),
-                        if ((customer['tax_number'] ?? '').toString().isNotEmpty)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.only(top: 2),
-                            child: pw.Text("Tax/TRN: ${customer['tax_number']}",
-                                style: pw.TextStyle(
-                                    fontSize: 9, color: PdfColors.grey800, fontWeight: pw.FontWeight.bold)),
-                          ),
-                        if ((customer['tin_number'] ?? '').toString().isNotEmpty)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.only(top: 2),
-                            child: pw.Text("TIN: ${customer['tin_number']}",
-                                style: pw.TextStyle(
-                                    fontSize: 9, color: PdfColors.grey800)),
-                          ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(width: 16),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text('VEHICLE',
-                          style: pw.TextStyle(
-                              fontSize: 9,
-                              color: PdfColors.grey600,
-                              fontWeight: pw.FontWeight.bold,
-                              letterSpacing: 0.5)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(vehicle['no'] ?? vehicle['number'] ?? '',
-                          style: pw.TextStyle(
-                              fontSize: 13,
-                              fontWeight: pw.FontWeight.bold)),
-                      pw.Text(
-                          (vehicle['vehicle_type'] != null && vehicle['vehicle_type'].toString().isNotEmpty)
-                              ? "${vehicle['vehicle_type']} - ${vehicle['type']}"
-                              : (vehicle['type'] ?? ''),
-                          style: const pw.TextStyle(
-                              fontSize: 11, color: PdfColors.grey700)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 24),
-
-              // Services table
-              pw.Text('SERVICES',
-                  style: pw.TextStyle(
-                      fontSize: 9,
-                      color: PdfColors.grey600,
-                      fontWeight: pw.FontWeight.bold,
-                      letterSpacing: 0.5)),
-              pw.SizedBox(height: 6),
-              pw.Table(
-                columnWidths: hasAnyDiscount
-                    ? {
-                        0: const pw.FlexColumnWidth(4),
-                        1: const pw.FixedColumnWidth(70),
-                        2: const pw.FixedColumnWidth(70),
-                        3: const pw.FixedColumnWidth(80),
-                      }
-                    : {
-                        0: const pw.FlexColumnWidth(4),
-                        1: const pw.FixedColumnWidth(80),
-                      },
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                children: [
-                  // Header row
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.indigo900),
-                    children: [
-                      _pdfCell('Service', isHeader: true, align: pw.Alignment.centerLeft),
-                      _pdfCell('Rate', isHeader: true),
-                      if (hasAnyDiscount) _pdfCell('Discount', isHeader: true),
-                      if (hasAnyDiscount) _pdfCell('Line Total', isHeader: true),
-                    ],
-                  ),
-                  // Data rows
-                  for (int i = 0; i < displayItems.length; i++)
-                    pw.TableRow(
-                      decoration: pw.BoxDecoration(
-                        color: i.isEven ? PdfColors.grey50 : PdfColors.white,
-                      ),
-                      children: [
-                        pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          alignment: pw.Alignment.centerLeft,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(displayItems[i]['name'] ?? '', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                              if (displayItems[i]['raw_service'] != null && _getServiceDetailText(displayItems[i]['raw_service'], currencySymbol).isNotEmpty)
-                                pw.Padding(
-                                  padding: const pw.EdgeInsets.only(top: 2),
-                                  child: pw.Text(
-                                    _getServiceDetailText(displayItems[i]['raw_service'], currencySymbol),
-                                    style: const pw.TextStyle(fontSize: 8, color: PdfColors.indigo900),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        _pdfCell('$currencySymbol${_fmt(displayItems[i]['rate'])}'),
-                        if (hasAnyDiscount)
-                          _pdfCell(
-                            ((displayItems[i]['discount'] as num?)?.toDouble() ?? 0.0) > 0
-                                ? '-$currencySymbol${_fmt(displayItems[i]['discount'])}'
-                                : '—',
-                            color: ((displayItems[i]['discount'] as num?)?.toDouble() ?? 0) > 0
-                                ? PdfColors.green700
-                                : PdfColors.grey500,
-                          ),
-                        if (hasAnyDiscount)
-                          _pdfCell(
-                            '$currencySymbol${_fmt(
-                              (displayItems[i]['rate'] as num).toDouble() -
-                                  ((displayItems[i]['discount'] as num?)?.toDouble() ?? 0),
-                            )}',
-                            bold: true,
-                          ),
-                      ],
-                    ),
-                ],
-              ),
-              pw.SizedBox(height: 20),
-
-              // Bill summary box (right-aligned)
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Container(
-                  width: 260,
-                  padding: const pw.EdgeInsets.all(12),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                    children: [
-                      _pdfSummaryRow('Subtotal', '$currencySymbol$subtotal'),
-                      if ((double.tryParse(discount.toString()) ?? 0) > 0)
-                        _pdfSummaryRow(
-                          'Total Discount',
-                          '-$currencySymbol$discount',
-                          valueColor: PdfColors.green700,
-                        ),
-                      if (taxes.isNotEmpty)
-                        for (final tax in taxes)
-                          _pdfSummaryRow(
-                            tax['name']?.toString() ?? 'Tax',
-                            '$currencySymbol${tax['amount']}',
-                          )
-                      else if ((double.tryParse(taxAmount.toString()) ?? 0) > 0)
-                        _pdfSummaryRow('Tax', '$currencySymbol$taxAmount'),
-                      pw.Divider(color: PdfColors.grey400),
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
-                          pw.Text('$currencySymbol$total',
-                              style: pw.TextStyle(
-                                  fontWeight: pw.FontWeight.bold,
-                                  fontSize: 16,
-                                  color: PdfColors.indigo900)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Remarks / Notes
-              if ((invoiceData['remarks']?.toString() ?? '').trim().isNotEmpty) ...[
-                pw.SizedBox(height: 16),
-                pw.Container(
-                  width: double.infinity,
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.grey50,
-                    border: pw.Border(
-                      left: pw.BorderSide(color: PdfColors.indigo900, width: 3),
-                      top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-                      right: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-                      bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-                    ),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('REMARKS / NOTES',
-                          style: pw.TextStyle(
-                              fontSize: 8,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.indigo900,
-                              letterSpacing: 0.5)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(invoiceData['remarks'].toString().trim(),
-                          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800)),
-                    ],
-                  ),
-                ),
-              ],
-
-              pw.Spacer(),
-              pw.Center(
-                child: pw.Column(
+              pw.Expanded(
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Thank you for choosing $branchName!',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
-                    pw.SizedBox(height: 4),
-                    pw.Text('Powered by Mobiz Technologies',
-                        style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+                    if (logoImage != null) ...[
+                      pw.Image(logoImage, width: 85, height: 85, fit: pw.BoxFit.contain),
+                      pw.SizedBox(width: 12),
+                    ],
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(companyName.toUpperCase(),
+                              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                          pw.Text(branchName,
+                              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+                          if (branchAddress.isNotEmpty)
+                            pw.Text(branchAddress, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                          if (branchPhone.isNotEmpty)
+                            pw.Text("Phone: $branchPhone", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                          if (branchEmail.isNotEmpty)
+                            pw.Text("Email: $branchEmail", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                          if (branchGst.isNotEmpty)
+                            pw.Text("GSTIN: $branchGst", style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
+              pw.SizedBox(width: 20),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text(
+                      ((double.tryParse(inv['tax_amount']?.toString() ?? '0') ?? 0.0) > 0 || (inv['taxes'] is List && (inv['taxes'] as List).isNotEmpty))
+                          ? 'TAX INVOICE'
+                          : (nonTaxTitle.isNotEmpty ? nonTaxTitle : 'PROFORMA INVOICE'),
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  if (companyTrn.isNotEmpty) ...[
+                    pw.SizedBox(height: 2),
+                    pw.Text('TRN: $companyTrn',
+                        style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  ],
+                  pw.SizedBox(height: 3),
+                  pw.Text(invNo,
+                      style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+                  pw.Text(inv['invoice_type'] == 'creditinvoice' ? 'Credit Invoice' : 'Cash Invoice',
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+                  if (paymentMode.isNotEmpty)
+                    pw.Text('Payment Mode: $paymentMode',
+                        style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+                  if (dateStr.isNotEmpty)
+                    pw.Text(dateStr, style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+                ],
+              ),
             ],
-          );
-        },
-      ),
-    );
+          ),
+          pw.SizedBox(height: 3),
+          pw.Divider(height: 14),
 
+          // Customer & Vehicle
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  pw.Text('BILLED TO', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+                  pw.SizedBox(height: 3),
+                  pw.Text(customer['name'] ?? '', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                  if ((customer['phone'] ?? '').toString().isNotEmpty)
+                    pw.Text(customer['phone'].toString(), style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
+                  if ((customer['address'] ?? '').toString().isNotEmpty)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 2, right: 10),
+                      child: pw.Text(customer['address'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+                    ),
+                  if (custTrn.isNotEmpty)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 2),
+                      child: pw.Text("TRN: $custTrn", style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800, fontWeight: pw.FontWeight.bold)),
+                    ),
+                ]),
+              ),
+              pw.SizedBox(width: 16),
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                pw.Text('VEHICLE', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+                pw.SizedBox(height: 3),
+                if (showVehicleNumber && (vehicle['number'] ?? vehicle['no'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['number'] ?? vehicle['no'] ?? '', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                if (showVehicleMake || showVehicleModel) ...[
+                  pw.Text(
+                    [
+                      if (showVehicleMake && (vehicle['make'] ?? '').toString().isNotEmpty) vehicle['make'].toString(),
+                      if (showVehicleModel && (vehicle['model'] ?? '').toString().isNotEmpty) vehicle['model'].toString(),
+                    ].join(' '),
+                    style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey800),
+                  ),
+                ],
+                if (showVehicleType && (vehicle['type'] ?? vehicle['vehicle_type'] ?? '').toString().isNotEmpty)
+                  pw.Text((vehicle['type'] ?? vehicle['vehicle_type']).toString(), style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                if (showVehicleSegment && (vehicle['segment'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['segment'].toString(), style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                if (showVehicleColor && (vehicle['color'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['color'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleFuelType && (vehicle['fuel_type'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['fuel_type'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleWheelType && (vehicle['wheel_type'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['wheel_type'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+                if (showVehicleEmissionStd && (vehicle['emission_standard'] ?? '').toString().isNotEmpty)
+                  pw.Text(vehicle['emission_standard'].toString(), style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600)),
+              ]),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+
+          // Services table
+          pw.Text('SERVICES', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500)),
+          pw.SizedBox(height: 4),
+          pw.Table.fromTextArray(
+            headers: ['Service / Item', 'Qty', 'Rate ($symbol)', 'Amount ($symbol)'],
+            data: allItems.map((item) => [
+              item['name'] ?? '',
+              item['qty'] ?? '1',
+              item['rate'] ?? '',
+              item['net'] ?? '',
+            ]).toList(),
+            headerStyle: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
+            cellHeight: 22,
+            cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.centerRight, 3: pw.Alignment.centerRight},
+          ),
+          pw.SizedBox(height: 10),
+
+          // Totals
+          pw.Container(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+              pw.Text('Subtotal:  $symbol${_fmt(inv['subtotal'])}', style: pw.TextStyle(fontSize: 9.5)),
+              if ((double.tryParse(inv['discount']?.toString() ?? '0') ?? 0) > 0)
+                pw.Text('Discount:  -$symbol${_fmt(inv['discount'])}', style: pw.TextStyle(fontSize: 9.5, color: PdfColors.green700)),
+              pw.Text('Tax:       $symbol${_fmt(inv['tax_amount'])}', style: pw.TextStyle(fontSize: 9.5)),
+              if (paymentMode.isNotEmpty)
+                pw.Text('Payment Mode:  $paymentMode', style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey700)),
+              pw.Container(width: 160, child: pw.Divider()),
+              pw.Text('Total:     $symbol${_fmt(inv['total'])}',
+                  style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+              pw.SizedBox(height: 3),
+              pw.Text('Collected: $symbol${_fmt(inv['amount_collected'])}',
+                  style: pw.TextStyle(fontSize: 11, color: PdfColors.green700)),
+            ]),
+          ),
+          // Remarks / Notes
+          if ((inv['remarks']?.toString() ?? '').trim().isNotEmpty) ...[
+            pw.SizedBox(height: 8),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey50,
+                border: pw.Border(
+                  left: pw.BorderSide(color: PdfColors.indigo900, width: 3),
+                  top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                  right: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                  bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                ),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('REMARKS / NOTES',
+                      style: pw.TextStyle(
+                          fontSize: 8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.indigo900,
+                          letterSpacing: 0.5)),
+                  pw.SizedBox(height: 3),
+                  pw.Text(inv['remarks'].toString().trim(),
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800)),
+                ],
+              ),
+            ),
+          ],
+          pw.Spacer(),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Thank you for choosing $branchName',
+                      style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                  pw.SizedBox(height: 3),
+                  pw.Text('Powered by Mobiz Technologies',
+                      style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey500)),
+                ],
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  if (sealImage != null) ...[
+                    pw.Image(sealImage, width: 95, height: 95, fit: pw.BoxFit.contain),
+                    pw.SizedBox(height: 4),
+                  ],
+                  pw.Container(width: 120, height: 1, color: PdfColors.grey400),
+                  pw.SizedBox(height: 2),
+                  pw.Text('Authorized Signatory', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ));
     return pdf;
   }
 
@@ -657,13 +613,13 @@ class InvoiceViewScreen extends StatelessWidget {
 
       final itemLines = <String>[];
       for (final s in services) {
-        final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
+        final qty = _toDouble(s['qty'], 1.0);
         final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
         itemLines.add("- ${s['name']}$qtyStr: $currencySymbol${_fmt(s['rate'])}");
       }
       for (final t in tradingItems) {
         if (t['is_operational'] != true) {
-          final qty = (t['qty'] as num?)?.toDouble() ?? 1.0;
+          final qty = _toDouble(t['qty'], 1.0);
           final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
           itemLines.add("- ${t['item_name']}$qtyStr: $currencySymbol${_fmt(t['net_taxable'] ?? t['rate'])}");
         }
@@ -729,13 +685,13 @@ class InvoiceViewScreen extends StatelessWidget {
 
       final itemLines = <String>[];
       for (final s in services) {
-        final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
+        final qty = _toDouble(s['qty'], 1.0);
         final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
         itemLines.add("- ${s['name']}$qtyStr: $currencySymbol${_fmt(s['rate'])}");
       }
       for (final t in tradingItems) {
         if (t['is_operational'] != true) {
-          final qty = (t['qty'] as num?)?.toDouble() ?? 1.0;
+          final qty = _toDouble(t['qty'], 1.0);
           final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
           itemLines.add("- ${t['item_name']}$qtyStr: $currencySymbol${_fmt(t['net_taxable'] ?? t['rate'])}");
         }
@@ -857,31 +813,38 @@ class InvoiceViewScreen extends StatelessWidget {
 
     final allItems = <Map<String, dynamic>>[];
     for (final s in services) {
-      final qty = (s['qty'] as num?)?.toDouble() ?? 1.0;
+      final qty = _toDouble(s['qty'], 1.0);
       final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
       allItems.add({
         'name': '${s['name'] ?? ''}$qtyStr',
-        'rate': (s['rate'] as num?)?.toDouble() ?? 0.0,
-        'discount': (s['discount'] as num?)?.toDouble() ?? 0.0,
+        'rate': _toDouble(s['rate']),
+        'discount': _toDouble(s['discount']),
         'raw_service': s,
         'is_operational': false,
       });
     }
     for (final t in tradingItems) {
       final isOp = t['is_operational'] == true;
-      final qty = (t['qty'] as num?)?.toDouble() ?? 1.0;
+      final qty = _toDouble(t['qty'], 1.0);
       final qtyStr = qty > 1 ? ' (x${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 1)})' : '';
       final name = isOp ? '${t['item_name'] ?? 'Stock Item'}$qtyStr' : '${t['item_name'] ?? 'Stock Item'}$qtyStr';
       allItems.add({
         'name': name,
-        'rate': isOp ? 0.0 : ((t['rate'] as num?)?.toDouble() ?? 0.0),
-        'discount': isOp ? 0.0 : ((t['discount'] as num?)?.toDouble() ?? 0.0),
+        'rate': isOp ? 0.0 : _toDouble(t['rate']),
+        'discount': isOp ? 0.0 : _toDouble(t['discount']),
         'is_operational': isOp,
       });
     }
 
+    // Sort services & items by price high to low
+    allItems.sort((a, b) {
+      final rateA = _toDouble(a['rate']);
+      final rateB = _toDouble(b['rate']);
+      return rateB.compareTo(rateA);
+    });
+
     final bool hasAnyDiscount =
-        allItems.any((s) => ((s['discount'] as num?)?.toDouble() ?? 0.0) > 0);
+        allItems.any((s) => _toDouble(s['discount']) > 0);
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -1109,19 +1072,13 @@ class InvoiceViewScreen extends StatelessWidget {
                               SizedBox(
                                 width: 68,
                                 child: Text(
-                                  ((allItems[i]['discount'] as num?)
-                                                  ?.toDouble() ??
-                                              0) >
-                                          0
+                                  _toDouble(allItems[i]['discount']) > 0
                                       ? '-$currencySymbol${_fmt(allItems[i]['discount'])}'
                                       : '—',
                                   textAlign: TextAlign.right,
                                   style: GoogleFonts.inter(
                                     fontSize: 13.sp,
-                                    color: ((allItems[i]['discount'] as num?)
-                                                    ?.toDouble() ??
-                                                0) >
-                                            0
+                                    color: _toDouble(allItems[i]['discount']) > 0
                                         ? Colors.green.shade600
                                         : Colors.grey.shade400,
                                     fontWeight: FontWeight.w600,
@@ -1132,10 +1089,8 @@ class InvoiceViewScreen extends StatelessWidget {
                                 width: 76,
                                 child: Text(
                                   context.tr('$currencySymbol${_fmt(
-                                    (allItems[i]['rate'] as num).toDouble() -
-                                        ((allItems[i]['discount'] as num?)
-                                                ?.toDouble() ??
-                                            0),
+                                    _toDouble(allItems[i]['rate']) -
+                                        _toDouble(allItems[i]['discount']),
                                   )}'),
                                   textAlign: TextAlign.right,
                                   style: GoogleFonts.inter(
@@ -1199,7 +1154,7 @@ class InvoiceViewScreen extends StatelessWidget {
 
               // ── Totals summary ────────────────────────────────────────────
               _summaryRow('Subtotal',
-                  '$currencySymbol${invoiceData['subtotal']}'),
+                  '$currencySymbol${_fmt(invoiceData['subtotal'])}'),
               if ((double.tryParse(
                           invoiceData['discount']?.toString() ?? '0') ??
                       0) >
@@ -1207,7 +1162,7 @@ class InvoiceViewScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 _summaryRow(
                   'Total Discount',
-                  '-$currencySymbol${invoiceData['discount']}',
+                  '-$currencySymbol${_fmt(invoiceData['discount'])}',
                   valueColor: Colors.green.shade600,
                 ),
               ],
@@ -1216,7 +1171,7 @@ class InvoiceViewScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   _summaryRow(
                     tax['name']?.toString() ?? 'Tax',
-                    '$currencySymbol${tax['amount']}',
+                    '$currencySymbol${_fmt(tax['amount'])}',
                   ),
                 ]
               else if ((double.tryParse(
@@ -1225,7 +1180,7 @@ class InvoiceViewScreen extends StatelessWidget {
                   0) ...[
                 const SizedBox(height: 8),
                 _summaryRow(
-                    'Tax', '$currencySymbol${invoiceData['tax_amount']}'),
+                    'Tax', '$currencySymbol${_fmt(invoiceData['tax_amount'])}'),
               ],
               const SizedBox(height: 16),
               Container(
@@ -1240,7 +1195,7 @@ class InvoiceViewScreen extends StatelessWidget {
                     Text(context.tr('Total'),
                         style: GoogleFonts.inter(
                             fontWeight: FontWeight.w800, fontSize: 17.sp)),
-                    Text(context.tr('$currencySymbol${invoiceData['total']}'),
+                    Text(context.tr('$currencySymbol${_fmt(invoiceData['total'])}'),
                         style: GoogleFonts.inter(
                             fontWeight: FontWeight.w900,
                             fontSize: 20.sp,

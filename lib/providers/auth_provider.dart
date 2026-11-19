@@ -72,6 +72,10 @@ class AuthProvider with ChangeNotifier {
     _subscriptionDaysLeft = prefs.getInt('subscription_days_left') ?? 999;
     _subscriptionEndDate = prefs.getString('subscription_end_date');
     _hasInsuranceModule = prefs.getBool('has_insurance_module') ?? false;
+    final savedIso = prefs.getString('auth_country_iso');
+    if (savedIso != null && savedIso.isNotEmpty) {
+      await CountryConfig.setCountryByIso(savedIso);
+    }
     notifyListeners();
   }
 
@@ -103,7 +107,14 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString('auth_display_name', _displayName ?? '');
         await prefs.setString('auth_username', _username ?? '');
         await prefs.setString('auth_company_logo', _companyLogo ?? '');
-        // Currency symbol is NOT saved to prefs — driven by CountryConfig at build time
+        // Auto-switch country based on company country from backend
+        final countryIso = data['country_iso_code'];
+        if (countryIso != null && countryIso.toString().trim().isNotEmpty) {
+          await CountryConfig.setCountryByIso(countryIso.toString().trim());
+          await prefs.setString('auth_country_iso', countryIso.toString().trim());
+        }
+
+        // Currency symbol is driven by CountryConfig
         await prefs.setBool('subscription_active', _subscriptionActive);
         await prefs.setInt('subscription_days_left', _subscriptionDaysLeft);
         await prefs.setBool('has_insurance_module', _hasInsuranceModule);

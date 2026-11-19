@@ -28,11 +28,11 @@ extension FontSizeOptionExtension on FontSizeOption {
   String get displayName {
     switch (this) {
       case FontSizeOption.extraSmall:
-        return 'Extra Small';
+        return 'Extra Small (Default)';
       case FontSizeOption.small:
         return 'Small';
       case FontSizeOption.medium:
-        return 'Medium (Default)';
+        return 'Medium';
       case FontSizeOption.large:
         return 'Large';
       case FontSizeOption.extraLarge:
@@ -59,7 +59,7 @@ extension FontSizeOptionExtension on FontSizeOption {
 class FontSizeProvider extends ChangeNotifier {
   static const String _prefKey = 'app_font_size_option';
 
-  FontSizeOption _selectedOption = FontSizeOption.medium;
+  FontSizeOption _selectedOption = FontSizeOption.extraSmall;
 
   FontSizeOption get selectedOption => _selectedOption;
   double get scaleFactor => _selectedOption.scaleFactor;
@@ -75,7 +75,7 @@ class FontSizeProvider extends ChangeNotifier {
       if (savedKey != null) {
         final matched = FontSizeOption.values.firstWhere(
           (e) => e.key == savedKey,
-          orElse: () => FontSizeOption.medium,
+          orElse: () => FontSizeOption.extraSmall,
         );
         _selectedOption = matched;
         notifyListeners();

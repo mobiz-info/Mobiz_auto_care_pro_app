@@ -5,12 +5,12 @@ void main(List<String> args) async {
     AppConfig(
         appName: "Mobiz Autocare Pro",
         iconPath: "assets/icons/Wash-Pilot_Blue-Icon.png",
-        packageName: "com.mobiz.washpilot",
+        packageName: "com.mobizautocarepro",
         baseUrl: "http://68.183.94.11:78/api"),
     AppConfig(
         appName: "Car Wash",
         iconPath: "assets/icons/mobiz_logo_launcher.png",
-        packageName: "com.mobiz.carwash",
+        packageName: "com.mobizautocarepro",
         baseUrl: "http://68.183.94.11:78/api"),
   ];
 

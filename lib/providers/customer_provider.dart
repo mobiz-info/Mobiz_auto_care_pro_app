@@ -53,7 +53,7 @@ class CustomerProvider with ChangeNotifier {
         final List<dynamic> vehicles = List<dynamic>.from(customer['vehicles'] ?? []);
         
         // Dynamically add vehicle_type if missing or empty using local map fallback
-        final List<Map<String, dynamic>> updatedVehicles = [];
+        List<Map<String, dynamic>> updatedVehicles = [];
         for (final v in vehicles) {
           final vMap = Map<String, dynamic>.from(v);
           final typeVal = vMap['vehicle_type']?.toString() ?? '';
@@ -62,6 +62,25 @@ class CustomerProvider with ChangeNotifier {
             vMap['vehicle_type'] = _modelToTypeMap[modelName] ?? '';
           }
           updatedVehicles.add(vMap);
+        }
+
+        // Ensure the last created vehicle is displayed first
+        final bool hadSortKeys = updatedVehicles.any((v) => v['auto_id'] != null || v['date_added'] != null);
+        if (hadSortKeys) {
+          updatedVehicles.sort((a, b) {
+            final autoA = a['auto_id'] is num ? (a['auto_id'] as num).toInt() : int.tryParse(a['auto_id']?.toString() ?? '');
+            final autoB = b['auto_id'] is num ? (b['auto_id'] as num).toInt() : int.tryParse(b['auto_id']?.toString() ?? '');
+            if (autoA != null && autoB != null) return autoB.compareTo(autoA);
+
+            final dateA = a['date_added']?.toString() ?? '';
+            final dateB = b['date_added']?.toString() ?? '';
+            if (dateA.isNotEmpty && dateB.isNotEmpty) return dateB.compareTo(dateA);
+
+            return 0;
+          });
+        } else {
+          // If server returns ascending insertion order, reverse so the newest vehicle is first
+          updatedVehicles = updatedVehicles.reversed.toList();
         }
         
         customer['vehicles'] = updatedVehicles;

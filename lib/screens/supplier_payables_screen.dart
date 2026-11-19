@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../services/api_service.dart';
+import '../config/country_config.dart';
 
 class SupplierPayablesScreen extends StatefulWidget {
   const SupplierPayablesScreen({super.key});
@@ -218,8 +219,10 @@ class _SupplierPayablesScreenState extends State<SupplierPayablesScreen> {
                     return Row(
                       children: [
                         _buildModeChip('CASH', context.tr('Cash'), Icons.money, currentMode, paymentModeNotifier),
-                        const SizedBox(width: 8),
-                        _buildModeChip('DIGITAL', context.tr('Digital'), Icons.qr_code_scanner, currentMode, paymentModeNotifier),
+                        if (!CountryConfig.isUAE) ...[
+                          const SizedBox(width: 8),
+                          _buildModeChip('DIGITAL', context.tr('Digital'), Icons.qr_code_scanner, currentMode, paymentModeNotifier),
+                        ],
                         const SizedBox(width: 8),
                         _buildModeChip('CHEQUE', context.tr('Cheque'), Icons.account_balance, currentMode, paymentModeNotifier),
                       ],

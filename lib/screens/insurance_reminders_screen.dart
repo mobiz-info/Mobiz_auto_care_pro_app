@@ -379,84 +379,106 @@ class _InsuranceRemindersScreenState extends State<InsuranceRemindersScreen> {
               children: [
                 Row(
                   children: [
-                    // Date picker pill
-                    InkWell(
-                      onTap: _pickDate,
-                      borderRadius: BorderRadius.circular(8.r),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 12.w, vertical: 8.h),
-                        decoration: BoxDecoration(
-                          color: !_showAll
-                              ? const Color(0xFF000080).withValues(alpha: 0.08)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8.r),
-                          border: Border.all(
-                            color: !_showAll
+                    // Today pill
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedDate = DateTime.now();
+                            _showAll = false;
+                          });
+                          _loadReminders();
+                        },
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 12.w, vertical: 8.h),
+                          decoration: BoxDecoration(
+                            color: isToday
                                 ? const Color(0xFF000080)
-                                : Colors.grey.shade300,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.calendar_today_outlined,
-                              size: 15.r,
-                              color: !_showAll
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(
+                              color: isToday
                                   ? const Color(0xFF000080)
-                                  : Colors.grey.shade600,
+                                  : Colors.grey.shade300,
                             ),
-                            SizedBox(width: 6.w),
-                            Text(
-                              isToday
-                                  ? context.tr('Today')
-                                  : _formatDateDisplay(_dateParam),
-                              style: GoogleFonts.inter(
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w600,
-                                color: !_showAll
-                                    ? const Color(0xFF000080)
-                                    : Colors.grey.shade700,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.today,
+                                size: 15.r,
+                                color: isToday
+                                    ? Colors.white
+                                    : Colors.grey.shade600,
                               ),
-                            ),
-                          ],
+                              SizedBox(width: 6.w),
+                              Text(
+                                context.tr('Today'),
+                                style: GoogleFonts.inter(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: isToday
+                                      ? Colors.white
+                                      : Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
 
                     SizedBox(width: 8.w),
 
-                    // All Reminders pill
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _showAll = !_showAll;
-                        });
-                        _loadReminders();
-                      },
-                      borderRadius: BorderRadius.circular(8.r),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 12.w, vertical: 8.h),
-                        decoration: BoxDecoration(
-                          color: _showAll
-                              ? const Color(0xFF000080)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8.r),
-                          border: Border.all(
-                            color: _showAll
+                    // Select Date pill
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickDate,
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 12.w, vertical: 8.h),
+                          decoration: BoxDecoration(
+                            color: !isToday
                                 ? const Color(0xFF000080)
-                                : Colors.grey.shade300,
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(
+                              color: !isToday
+                                  ? const Color(0xFF000080)
+                                  : Colors.grey.shade300,
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          context.tr('All Reminders'),
-                          style: GoogleFonts.inter(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color:
-                                _showAll ? Colors.white : Colors.grey.shade700,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.calendar_month_outlined,
+                                size: 15.r,
+                                color: !isToday
+                                    ? Colors.white
+                                    : Colors.grey.shade600,
+                              ),
+                              SizedBox(width: 6.w),
+                              Flexible(
+                                child: Text(
+                                  !isToday
+                                      ? _formatDateDisplay(_dateParam)
+                                      : context.tr('Select Date'),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: !isToday
+                                        ? Colors.white
+                                        : Colors.grey.shade700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

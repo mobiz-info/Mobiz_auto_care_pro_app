@@ -1,3 +1,4 @@
+import 'job_card_workflow_screen.dart';
 import 'package:car_wash_mobile/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -20,7 +21,6 @@ import 'reports_screen.dart';
 import 'broadcast_screen.dart';
 import 'complaints_screen.dart';
 import 'language_screen.dart';
-import 'country_screen.dart';
 import 'font_size_screen.dart';
 import '../config/country_config.dart';
 import '../config/app_defaults.dart';
@@ -35,11 +35,13 @@ import 'customer_collection_screen.dart';
 import '../services/api_service.dart';
 import 'stock_management_screen.dart';
 import 'stock_item_screen.dart';
-import 'quotation_list_screen.dart';
 import 'supplier_payables_screen.dart';
 import 'purchase_invoice_create_screen.dart';
-import 'leads_screen.dart';
 import 'insurance_screen.dart';
+import 'vehicle_make_screen.dart';
+import 'vehicle_brand_screen.dart';
+import 'leads_screen.dart';
+import 'quotation_list_screen.dart';
 
 
 
@@ -69,10 +71,12 @@ class _MenuScreenState extends State<MenuScreen> {
       'color': Color(0xFF3B82F6),
     },
     {
-      'title': 'Quotation',
-      'icon': Icons.request_quote_outlined,
+      'title': 'Job Card',
+      'icon': Icons.assignment_outlined,
       'color': Color(0xFF0284C7),
     },
+    {'title': 'Leads', 'icon': Icons.leaderboard_outlined, 'color': Color(0xFF16A34A)},
+    {'title': 'Quotations', 'icon': Icons.request_quote_outlined, 'color': Color(0xFF7C3AED)},
     {
       'title': 'Book Now',
       'icon': Icons.calendar_today,
@@ -150,14 +154,14 @@ class _MenuScreenState extends State<MenuScreen> {
       'color': Color(0xFFF43F5E),
     },
     {
-      'title': 'Leads',
-      'icon': Icons.leaderboard_outlined,
-      'color': Color(0xFF7C3AED),
-    },
-    {
       'title': 'Insurance',
       'icon': Icons.shield_outlined,
       'color': Color(0xFF059669),
+    },
+    {
+      'title': 'Master',
+      'icon': Icons.tune_outlined,
+      'color': Color(0xFF7C3AED),
     },
     {
       'title': 'Stock Items',
@@ -189,10 +193,12 @@ class _MenuScreenState extends State<MenuScreen> {
       'color': Color(0xFF3B82F6),
     },
     {
-      'title': 'Quotation',
-      'icon': Icons.request_quote_outlined,
+      'title': 'Job Card',
+      'icon': Icons.assignment_outlined,
       'color': Color(0xFF0284C7),
     },
+    {'title': 'Leads', 'icon': Icons.leaderboard_outlined, 'color': Color(0xFF16A34A)},
+    {'title': 'Quotations', 'icon': Icons.request_quote_outlined, 'color': Color(0xFF7C3AED)},
     {
       'title': 'Book Now',
       'icon': Icons.calendar_today,
@@ -290,14 +296,14 @@ class _MenuScreenState extends State<MenuScreen> {
       'color': Color(0xFFF43F5E),
     },
     {
-      'title': 'Leads',
-      'icon': Icons.leaderboard_outlined,
-      'color': Color(0xFF7C3AED),
-    },
-    {
       'title': 'Insurance',
       'icon': Icons.shield_outlined,
       'color': Color(0xFF059669),
+    },
+    {
+      'title': 'Master',
+      'icon': Icons.tune_outlined,
+      'color': Color(0xFF7C3AED),
     },
     {
       'title': 'Booking Settings',
@@ -325,7 +331,9 @@ class _MenuScreenState extends State<MenuScreen> {
   void _navigate(BuildContext context, String title) {
     final routes = <String, Widget>{
       'New Job': NewJobScreen(),
-      'Quotation': const QuotationListScreen(),
+      'Job Card': const JobCardWorkflowScreen(),
+      'Leads': const LeadsScreen(),
+      'Quotations': const QuotationListScreen(),
       'Book Now': BookNowScreen(),
 
       'Bookings': const BookingsListScreen(),
@@ -341,7 +349,6 @@ class _MenuScreenState extends State<MenuScreen> {
       'Notifications': BroadcastScreen(),
       'Complaints': const ComplaintsScreen(),
       'Language': const LanguageScreen(),
-      'Country': const CountryScreen(),
       'Font Size': const FontSizeScreen(),
       'Expense': ExpenseScreen(),
       'Suppliers': const SupplierScreen(),
@@ -356,14 +363,150 @@ class _MenuScreenState extends State<MenuScreen> {
       'Oil Stock': const StockManagementScreen(initialCategory: 'OIL'),
       'Extras': const ExtrasScreen(),
       'Booking Settings': const BookingSettingsScreen(),
-      'Leads': const LeadsScreen(),
       'Insurance': const InsuranceScreen(),
+      'Vehicle Make': const VehicleMakeScreen(),
+      'Vehicle Brand': const VehicleBrandScreen(),
     };
+
+    // Master menu opens bottom sheet with sub-items
+    if (title == 'Master') {
+      _showMasterBottomSheet(context);
+      return;
+    }
 
     final screen = routes[title];
     if (screen != null) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
     }
+  }
+
+  void _showMasterBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ],
+                  mainAxisAlignment: MainAxisAlignment.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  context.tr('Master'),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: const Color(0xFF1e293b),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  context.tr('Manage vehicle master data'),
+                  style: GoogleFonts.inter(color: Colors.grey, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+                _masterSheetTile(
+                  ctx,
+                  icon: Icons.directions_car,
+                  color: const Color(0xFF6366F1),
+                  title: context.tr('Vehicle Make'),
+                  subtitle: context.tr('Manage brands like Honda, Toyota'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const VehicleMakeScreen()));
+                  },
+                ),
+                const SizedBox(height: 12),
+                _masterSheetTile(
+                  ctx,
+                  icon: Icons.car_repair,
+                  color: const Color(0xFF0EA5E9),
+                  title: context.tr('Vehicle Brand / Model'),
+                  subtitle: context.tr('Manage models like City, Corolla'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const VehicleBrandScreen()));
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _masterSheetTile(
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.18)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: const Color(0xFF1e293b))),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: GoogleFonts.inter(
+                          color: Colors.grey.shade500, fontSize: 12)),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 16, color: color),
+          ],
+        ),
+      ),
+    );
   }
 
 
@@ -452,12 +595,20 @@ class _MenuScreenState extends State<MenuScreen> {
                       'Dashboard',
                       () => Navigator.pop(context),
                     ),
-                    _drawerItem(Icons.request_quote_outlined, 'Quotation', () {
+                    _drawerItem(Icons.assignment_outlined, 'Job Card', () {
                       Navigator.pop(context);
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const QuotationListScreen()),
+                        MaterialPageRoute(builder: (_) => const JobCardWorkflowScreen()),
                       );
+                    }),
+                    _drawerItem(Icons.leaderboard_outlined, 'Leads', () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const LeadsScreen()));
+                    }),
+                    _drawerItem(Icons.request_quote_outlined, 'Quotations', () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const QuotationListScreen()));
                     }),
                     if (!isCompany) ...[
                       _drawerItem(Icons.receipt_long_outlined, 'Bills', () {
@@ -624,19 +775,6 @@ class _MenuScreenState extends State<MenuScreen> {
                         );
                       },
                     ),
-                    _drawerItem(
-                      Icons.leaderboard_outlined,
-                      'Leads',
-                      () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LeadsScreen(),
-                          ),
-                        );
-                      },
-                    ),
                     if (auth.hasInsuranceModule)
                       _drawerItem(
                         Icons.shield_outlined,
@@ -651,6 +789,7 @@ class _MenuScreenState extends State<MenuScreen> {
                           );
                         },
                       ),
+                    _masterDrawerSection(context),
                     _drawerItem(
                       Icons.language_outlined,
                       'Language',
@@ -673,19 +812,6 @@ class _MenuScreenState extends State<MenuScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const FontSizeScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _drawerItem(
-                      Icons.public_outlined,
-                      'Country',
-                      () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CountryScreen(),
                           ),
                         );
                       },
@@ -987,6 +1113,48 @@ class _MenuScreenState extends State<MenuScreen> {
   // ─── Section Title ────────────────────────────────────────────────────────
 
   // ─── Drawer Item ──────────────────────────────────────────────────────────
+  Widget _masterDrawerSection(BuildContext context) {
+    return ExpansionTile(
+      leading: Icon(Icons.tune_outlined, color: Color(0xFF7C3AED), size: 22),
+      title: Text(
+        context.tr('Master'),
+        style: GoogleFonts.inter(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+          color: Color(0xFF1e293b),
+        ),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      children: [
+        ListTile(
+          leading: Icon(Icons.directions_car, color: Color(0xFF6366F1), size: 20),
+          title: Text(
+            context.tr('Vehicle Make'),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1e293b)),
+          ),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleMakeScreen()));
+          },
+          contentPadding: const EdgeInsets.only(left: 32, right: 16),
+        ),
+        ListTile(
+          leading: Icon(Icons.car_repair, color: Color(0xFF0EA5E9), size: 20),
+          title: Text(
+            context.tr('Vehicle Brand'),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1e293b)),
+          ),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleBrandScreen()));
+          },
+          contentPadding: const EdgeInsets.only(left: 32, right: 16),
+        ),
+      ],
+    );
+  }
+
   Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Color(0xFF000080), size: 22.r),

@@ -13,7 +13,6 @@ import 'expense_screen.dart';
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
-
   @override
   Widget build(BuildContext context) {
     final dashProvider = context.watch<DashboardProvider>();
@@ -46,10 +45,7 @@ class DashboardScreen extends StatelessWidget {
           context.tr('Dashboard'),
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18.sp),
         ),
-        leading: IconButton(
-          icon: Icon(Icons.menu),
-          onPressed: () {},
-        ),
+        leading: IconButton(icon: Icon(Icons.menu), onPressed: () {}),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -88,15 +84,25 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800, size: 20.r),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.amber.shade800,
+                      size: 20.r,
+                    ),
                     SizedBox(width: 12.w),
                     Expanded(
                       child: Text(
                         auth.subscriptionDaysLeft == 0
-                            ? context.tr('Subscription ends today. Please renew to avoid service disruption.')
+                            ? context.tr(
+                                'Subscription ends today. Please renew to avoid service disruption.',
+                              )
                             : auth.subscriptionDaysLeft == 1
-                                ? context.tr('Subscription ends tomorrow. Please renew to avoid service disruption.')
-                                : context.tr('Subscription ending in ${auth.subscriptionDaysLeft} days. Please renew to avoid service disruption.'),
+                            ? context.tr(
+                                'Subscription ends tomorrow. Please renew to avoid service disruption.',
+                              )
+                            : context.tr(
+                                'Subscription ending in ${auth.subscriptionDaysLeft} days. Please renew to avoid service disruption.',
+                              ),
                         style: GoogleFonts.inter(
                           color: Colors.amber.shade900,
                           fontWeight: FontWeight.w600,
@@ -115,7 +121,10 @@ class DashboardScreen extends StatelessWidget {
             ],
 
             // ── Today's Stats ───────────────────────────────────────────
-            buildSectionTitle(context.tr("Today's Summary"), Icons.today_outlined),
+            buildSectionTitle(
+              context.tr("Today's Summary"),
+              Icons.today_outlined,
+            ),
             SizedBox(height: 10.h),
             _buildTodayStats(dashProvider, context),
             SizedBox(height: 20.h),
@@ -131,7 +140,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // ─── Today Stats (3 cards) ───────────────────────────────────────────────
+  // ─── Today Stats ────────────────────────────────────────────────────────
   Widget _buildTodayStats(DashboardProvider p, BuildContext context) {
     final loading = p.isLoading;
     return Column(
@@ -178,6 +187,19 @@ class DashboardScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => ExpenseScreen()),
                   );
                 },
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: _statCard(
+                context,
+                'Cash in Hand',
+                loading
+                    ? '...'
+                    : '${p.cashInHand}',
+                Icons.account_balance_wallet_outlined,
+                const Color(0xFF0F766E),
+                const Color(0xFFE6F4F1),
               ),
             ),
           ],
@@ -232,7 +254,9 @@ class DashboardScreen extends StatelessWidget {
             Icons.warning_amber_outlined,
             Color(0xFFEF4444),
             Color(0xFFFFF1F2),
-            subtitle: loading ? '' : '${p.outstandingCount} ${context.tr('invoices')}',
+            subtitle: loading
+                ? ''
+                : '${p.outstandingCount} ${context.tr('invoices')}',
             onTap: () {
               Navigator.push(
                 context,
@@ -262,7 +286,10 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentInvoices(BuildContext context, List<dynamic> recentInvoices) {
+  Widget _buildRecentInvoices(
+    BuildContext context,
+    List<dynamic> recentInvoices,
+  ) {
     final currencySymbol = context.read<AuthProvider>().currencySymbol;
     return Container(
       decoration: BoxDecoration(
@@ -314,7 +341,9 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 subtitle: Text(
-                  context.tr('${inv['invoice_number'] ?? ''} · ${inv['vehicle'] ?? ''}'),
+                  context.tr(
+                    '${inv['invoice_number'] ?? ''} · ${inv['vehicle'] ?? ''}',
+                  ),
                   style: GoogleFonts.inter(
                     fontSize: 11.sp,
                     color: Color(0xFF94A3B8),
@@ -334,7 +363,9 @@ class DashboardScreen extends StatelessWidget {
                     ),
                     if (outstanding > 0)
                       Text(
-                        context.tr('Due $currencySymbol${outstanding.toStringAsFixed(0)}'),
+                        context.tr(
+                          'Due $currencySymbol${outstanding.toStringAsFixed(0)}',
+                        ),
                         style: GoogleFonts.inter(
                           fontSize: 10.sp,
                           color: Colors.red.shade400,
@@ -442,7 +473,11 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBranchDropdown(DashboardProvider p, AuthProvider auth, BuildContext context) {
+  Widget _buildBranchDropdown(
+    DashboardProvider p,
+    AuthProvider auth,
+    BuildContext context,
+  ) {
     final token = auth.token;
     return Container(
       padding: REdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -462,10 +497,18 @@ class DashboardScreen extends StatelessWidget {
         child: DropdownButton<String?>(
           isExpanded: true,
           value: p.selectedBranchId,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF000080), size: 22.r),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: Color(0xFF000080),
+            size: 22.r,
+          ),
           hint: Row(
             children: [
-              Icon(Icons.storefront_outlined, size: 18.r, color: Color(0xFF000080)),
+              Icon(
+                Icons.storefront_outlined,
+                size: 18.r,
+                color: Color(0xFF000080),
+              ),
               SizedBox(width: 10.w),
               Text(
                 context.tr('All Branches'),
@@ -482,7 +525,11 @@ class DashboardScreen extends StatelessWidget {
               value: null,
               child: Row(
                 children: [
-                  Icon(Icons.storefront_outlined, size: 18.r, color: Color(0xFF000080)),
+                  Icon(
+                    Icons.storefront_outlined,
+                    size: 18.r,
+                    color: Color(0xFF000080),
+                  ),
                   SizedBox(width: 10.w),
                   Text(
                     context.tr('All Branches'),
@@ -500,7 +547,11 @@ class DashboardScreen extends StatelessWidget {
                 value: b['id']?.toString(),
                 child: Row(
                   children: [
-                    Icon(Icons.location_on_outlined, size: 18.r, color: Color(0xFF3B82F6)),
+                    Icon(
+                      Icons.location_on_outlined,
+                      size: 18.r,
+                      color: Color(0xFF3B82F6),
+                    ),
                     SizedBox(width: 10.w),
                     Expanded(
                       child: Text(
@@ -530,19 +581,18 @@ class DashboardScreen extends StatelessWidget {
 }
 
 Widget buildSectionTitle(String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 18.r, color: Color(0xFF000080)),
-        SizedBox(width: 8.w),
-        Text(
-          title,
-          style: GoogleFonts.inter(
-            fontSize: 15.sp,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF1e293b),
-          ),
+  return Row(
+    children: [
+      Icon(icon, size: 18.r, color: Color(0xFF000080)),
+      SizedBox(width: 8.w),
+      Text(
+        title,
+        style: GoogleFonts.inter(
+          fontSize: 15.sp,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF1e293b),
         ),
-      ],
-    );
-  }
-
+      ),
+    ],
+  );
+}

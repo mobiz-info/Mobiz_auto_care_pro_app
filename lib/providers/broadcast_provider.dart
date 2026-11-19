@@ -34,6 +34,7 @@ class BroadcastProvider extends ChangeNotifier {
 
   // ── Date and Reminders Selection State ─────────────────────────────────────
   DateTime _selectedReminderDate = DateTime.now();
+  // Default to false so that today's reminders are displayed by default.
   bool _showAllReminders = false;
   final Set<String> _selectedReminderIds = {};
   final Set<String> _selectedCustomerIds = {};

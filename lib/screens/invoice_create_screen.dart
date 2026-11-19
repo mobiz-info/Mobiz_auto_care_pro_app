@@ -133,6 +133,25 @@ class _TradingItemRow {
       : ((rate * qty) - discount).clamp(0.0, double.infinity);
   double get lineTotal => netTaxable;
 
+  String get code {
+    if (selectedStockItem == null) return '-';
+    final pCode = (selectedStockItem!['product_code'] ?? '').toString().trim();
+    if (pCode.isNotEmpty) return pCode;
+    final partNo = (selectedStockItem!['part_number'] ?? '').toString().trim();
+    if (partNo.isNotEmpty) return partNo;
+    final altPartNo = (selectedStockItem!['alternate_part_number'] ?? '').toString().trim();
+    if (altPartNo.isNotEmpty) return altPartNo;
+    final barcode = (selectedStockItem!['barcode'] ?? '').toString().trim();
+    if (barcode.isNotEmpty) return barcode;
+    final id = (selectedStockItem!['id'] ?? '').toString().trim();
+    return id.isNotEmpty ? (id.length > 6 ? id.substring(0, 6) : id) : '-';
+  }
+
+  String get itemName {
+    if (selectedStockItem == null) return '-';
+    return (selectedStockItem!['item_name'] ?? '').toString().trim();
+  }
+
   void dispose() {
     rateController.dispose();
     qtyController.dispose();
@@ -450,6 +469,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   List<Map<String, dynamic>> _availableTaxes = [];
   Set<String> _selectedTaxIds = {};
   bool _applyGst = false;
+  bool _isTaxInclusive = false;
 
   // Selected service rows (each row = one service line)
   final List<_ServiceRow> _rows = [];
@@ -478,6 +498,21 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   bool _addTradingItems = false;
   final List<_TradingItemRow> _tradingRows = [];
   List<dynamic> _availableStockItems = [];
+
+  // Quick Add Entry bar state for Stock Items
+  Map<String, dynamic>? _entryStockItem;
+  final TextEditingController _entryRateController = TextEditingController(text: '0.00');
+  final TextEditingController _entryQtyController = TextEditingController(text: '1');
+  final TextEditingController _entryDiscountController = TextEditingController(text: '0.00');
+  final TextEditingController _entryRemarkController = TextEditingController();
+  bool _entryIsOperational = false;
+
+  double get _entryTotal {
+    final rate = _entryIsOperational ? 0.0 : (double.tryParse(_entryRateController.text) ?? 0.0);
+    final qty = double.tryParse(_entryQtyController.text) ?? 1.0;
+    final discount = _entryIsOperational ? 0.0 : (double.tryParse(_entryDiscountController.text) ?? 0.0);
+    return ((rate * qty) - discount).clamp(0.0, double.infinity);
+  }
 
   // Checkbox section flags
   bool _addExtras = false;
@@ -534,7 +569,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     }
   }
 
-  double get totalDiscount {
+  double get rawDiscount {
     final itemDiscount = _rows.fold(0.0, (s, r) => s + r.effectiveDiscount);
     final tradingDiscount = _addTradingItems
         ? _tradingRows.fold(0.0, (s, r) => s + r.discount)
@@ -542,20 +577,58 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     return itemDiscount + tradingDiscount + additionalDiscountAmount;
   }
 
-  // Subtotal = gross amount before discount
-  double get subtotal =>
+  // Total Tax Percentage of selected taxes
+  double get totalTaxPercent {
+    if (!_applyGst) return 0.0;
+    double p = 0.0;
+    for (final tax in _availableTaxes) {
+      if (_selectedTaxIds.contains(tax['id']?.toString() ?? '')) {
+        p += (tax['percent'] as num).toDouble();
+      }
+    }
+    return p;
+  }
+
+  // Gross Subtotal (sum of services + trading + extras before discount)
+  double get grossSubtotal =>
       (totalServicesAmount + totalTradingItemsAmount + totalExtrasAmount).clamp(
         0.0,
         double.infinity,
       );
 
+  // Subtotal (Base taxable before discount if tax-inclusive, else grossSubtotal)
+  double get subtotal {
+    if (_isTaxInclusive && _applyGst && totalTaxPercent > 0) {
+      return (grossSubtotal / (1.0 + (totalTaxPercent / 100.0))).clamp(
+        0.0,
+        double.infinity,
+      );
+    }
+    return grossSubtotal;
+  }
+
+  // Total discount (Base discount if tax-inclusive, else raw total discount)
+  double get totalDiscount {
+    if (_isTaxInclusive && _applyGst && totalTaxPercent > 0) {
+      return (rawDiscount / (1.0 + (totalTaxPercent / 100.0))).clamp(
+        0.0,
+        double.infinity,
+      );
+    }
+    return rawDiscount;
+  }
+
   // Taxable Value = Subtotal after discount
   double get taxableValue =>
       (subtotal - totalDiscount).clamp(0.0, double.infinity);
 
-  // Tax Amount = calculated on Taxable Value (post-discount)
+  // Tax Amount
   double get taxAmount {
-    if (!_applyGst) return 0.0;
+    if (!_applyGst || totalTaxPercent == 0) return 0.0;
+    if (_isTaxInclusive) {
+      final netGross = (grossSubtotal - rawDiscount).clamp(0.0, double.infinity);
+      return (netGross - taxableValue).clamp(0.0, double.infinity);
+    }
     double t = 0.0;
     for (final tax in _availableTaxes) {
       if (_selectedTaxIds.contains(tax['id']?.toString() ?? '')) {
@@ -566,8 +639,13 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     return t;
   }
 
-  // Total = Taxable Value + Tax Amount
-  double get total => (taxableValue + taxAmount).clamp(0.0, double.infinity);
+  // Total
+  double get total {
+    if (_isTaxInclusive && _applyGst && totalTaxPercent > 0) {
+      return (grossSubtotal - rawDiscount).clamp(0.0, double.infinity);
+    }
+    return (taxableValue + taxAmount).clamp(0.0, double.infinity);
+  }
 
   List<Map<String, dynamic>> get selectedTaxes {
     if (!_applyGst) return [];
@@ -621,6 +699,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     for (final tRow in _tradingRows) {
       tRow.dispose();
     }
+    _entryRateController.dispose();
+    _entryQtyController.dispose();
+    _entryDiscountController.dispose();
+    _entryRemarkController.dispose();
     final Set<TextEditingController> extraControllersToDispose = {};
     for (final extra in _selectedExtras) {
       if (extra['qtyController'] is TextEditingController) {
@@ -732,6 +814,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         if (_enabledCategories.isNotEmpty) {
           _selectedCategoryFilter = _enabledCategories.first.toString();
         }
+        if (svcRes['is_tax_inclusive'] != null) {
+          _isTaxInclusive = svcRes['is_tax_inclusive'] == true;
+        }
         final rawTaxes = svcRes['taxes'] as List<dynamic>? ?? [];
         _availableTaxes = rawTaxes
             .map((t) => Map<String, dynamic>.from(t as Map))
@@ -776,6 +861,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       try {
         final formRes = await ApiService.getFormData(token);
         if (formRes['success'] == true) {
+        if (formRes['is_tax_inclusive'] != null) {
+          _isTaxInclusive = formRes['is_tax_inclusive'] == true;
+        }
           _availableStockItems = formRes['stock_items'] ?? [];
         }
       } catch (_) {}
@@ -1245,8 +1333,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   }
 
   void _syncAmountCollected() {
-    // When editing an existing invoice, don't auto-overwrite the saved collected amount
-    if (widget.invoiceToEdit != null) return;
+    // Don't auto-overwrite during initial load of existing invoice
+    if (_isLoading) return;
+    if (_selectedSalesType == 'credit') {
+      _amountCollectedController.text = '0';
+      return;
+    }
     _amountCollectedController.text = total.toStringAsFixed(2);
   }
 
@@ -1776,6 +1868,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         'discount': totalDiscount,
         'tax_amount': taxAmount,
         'total': total,
+        'is_tax_inclusive': _isTaxInclusive,
         'amount_collected':
             double.tryParse(_amountCollectedController.text) ?? 0.0,
         'payment_mode': _selectedSalesType == 'cash'
@@ -5057,6 +5150,21 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                   ),
                 ),
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _isTaxInclusive ? const Color(0xFFDCFCE7) : const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _isTaxInclusive ? 'Tax Inclusive' : 'Tax Exclusive',
+                  style: GoogleFonts.inter(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _isTaxInclusive ? const Color(0xFF166534) : const Color(0xFF0369A1),
+                  ),
+                ),
+              ),
             ],
           ),
           if (_applyGst) ...[
@@ -5118,7 +5226,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       final name = t['name'] as String;
       final pct = (t['percent'] as num).toDouble();
       final amt = double.tryParse(t['amount'].toString()) ?? 0.0;
-      return MapEntry('$name (${pct.toStringAsFixed(1)}%)', amt);
+      final label = _isTaxInclusive
+          ? '$name (${pct.toStringAsFixed(1)}%) (incl.)'
+          : '$name (${pct.toStringAsFixed(1)}%)';
+      return MapEntry(label, amt);
     }).toList();
 
     return _card(
@@ -5660,7 +5771,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     );
   }
 
-  void _showStockItemSearchSheet(_TradingItemRow row) {
+  void _showStockItemSearchSheet({
+    _TradingItemRow? row,
+    Function(Map<String, dynamic> item)? onSelected,
+  }) {
     final searchController = TextEditingController();
     showModalBottomSheet(
       context: context,
@@ -5684,11 +5798,19 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               final subGroup = (item['sub_group_name'] ?? '')
                   .toString()
                   .toLowerCase();
+              final pCode = (item['product_code'] ?? '').toString().toLowerCase();
+              final partNo = (item['part_number'] ?? '').toString().toLowerCase();
+              final altNo = (item['alternate_part_number'] ?? '').toString().toLowerCase();
+              final barcode = (item['barcode'] ?? '').toString().toLowerCase();
               return query.isEmpty ||
                   name.contains(query) ||
                   brand.contains(query) ||
                   group.contains(query) ||
-                  subGroup.contains(query);
+                  subGroup.contains(query) ||
+                  pCode.contains(query) ||
+                  partNo.contains(query) ||
+                  altNo.contains(query) ||
+                  barcode.contains(query);
             }).toList();
 
             return Container(
@@ -5784,9 +5906,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                             itemBuilder: (context, index) {
                               final item = filteredItems[index];
                               final isSelected =
-                                  row.selectedStockItem != null &&
-                                  row.selectedStockItem!['id'].toString() ==
-                                      item['id'].toString();
+                                  (row?.selectedStockItem != null &&
+                                          row!.selectedStockItem!['id'].toString() ==
+                                              item['id'].toString()) ||
+                                      (_entryStockItem != null &&
+                                          _entryStockItem!['id'].toString() ==
+                                              item['id'].toString());
                               final itemName = item['item_name'].toString();
                               final brand = (item['brand'] ?? '').toString();
                               final groupName = (item['group_name'] ?? '')
@@ -5814,21 +5939,23 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
                               return InkWell(
                                 onTap: () {
-                                  row.selectedStockItem =
-                                      Map<String, dynamic>.from(item);
-                                  row.currentStock = qty;
-                                  row.unitName = unitName;
-                                  row.isOperational = false;
-                                  if (rate > 0) {
-                                    row.rateController.text = rate
-                                        .toStringAsFixed(2);
-                                  } else {
-                                    row.rateController.text = '0.00';
+                                  final itemMap = Map<String, dynamic>.from(item);
+                                  if (onSelected != null) {
+                                    onSelected(itemMap);
+                                  } else if (row != null) {
+                                    row.selectedStockItem = itemMap;
+                                    row.currentStock = qty;
+                                    row.unitName = unitName;
+                                    row.isOperational = false;
+                                    if (rate > 0) {
+                                      row.rateController.text = rate.toStringAsFixed(2);
+                                    } else {
+                                      row.rateController.text = '0.00';
+                                    }
+                                    row.discountController.text = '0.00';
+                                    _syncAmountCollected();
+                                    _updateUi();
                                   }
-                                  row.discountController.text = '0.00';
-
-                                  _syncAmountCollected();
-                                  _updateUi();
                                   Navigator.pop(ctx);
                                 },
                                 borderRadius: BorderRadius.circular(10),
@@ -6335,6 +6462,58 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     );
   }
 
+  void _addStockItemFromEntry() {
+    if (_entryStockItem == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Please select a stock item first')),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final qty = double.tryParse(_entryQtyController.text) ?? 0.0;
+    if (qty <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Quantity must be greater than 0')),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final newRow = _TradingItemRow();
+    newRow.selectedStockItem = Map<String, dynamic>.from(_entryStockItem!);
+    newRow.currentStock = (_entryStockItem!['quantity'] as num?)?.toDouble() ??
+        double.tryParse(_entryStockItem!['quantity']?.toString() ?? '') ??
+        0.0;
+    newRow.unitName = (_entryStockItem!['unit_name'] ?? 'Pcs').toString();
+    newRow.isOperational = _entryIsOperational;
+    newRow.rateController.text =
+        _entryIsOperational ? '0.00' : _entryRateController.text;
+    newRow.qtyController.text = _entryQtyController.text;
+    newRow.discountController.text =
+        _entryIsOperational ? '0.00' : _entryDiscountController.text;
+    newRow.remarkController.text = _entryRemarkController.text;
+
+    _tradingRows.add(newRow);
+
+    // Reset entry inputs
+    _entryStockItem = null;
+    _entryRateController.text = '0.00';
+    _entryQtyController.text = '1';
+    _entryDiscountController.text = '0.00';
+    _entryRemarkController.clear();
+    _entryIsOperational = false;
+
+    _syncAmountCollected();
+    _updateUi();
+  }
+
   Widget _tradingItemsCard() {
     return _card(
       title: 'Stock Items',
@@ -6345,9 +6524,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
             activeColor: const Color(0xFF000080),
             onChanged: (val) {
               _addTradingItems = val ?? false;
-              if (_addTradingItems && _tradingRows.isEmpty) {
-                _tradingRows.insert(0, _TradingItemRow());
-              }
               _syncAmountCollected();
               _updateUi();
             },
@@ -6358,22 +6534,25 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               style: GoogleFonts.inter(
                 fontWeight: FontWeight.w800,
                 fontSize: 14.sp,
-                color: Color(0xFF000080),
+                color: const Color(0xFF000080),
               ),
             ),
           ),
-          if (_addTradingItems)
-            IconButton(
-              icon: const Icon(
-                Icons.add_circle,
-                color: Color(0xFF000080),
-                size: 26,
+          if (_addTradingItems && _tradingRows.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF000080).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
               ),
-              onPressed: () {
-                _tradingRows.insert(0, _TradingItemRow());
-                _updateUi();
-              },
-              tooltip: context.tr('+ Add Stock Item'),
+              child: Text(
+                '${_tradingRows.length} ${context.tr('items')}',
+                style: GoogleFonts.inter(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF000080),
+                ),
+              ),
             ),
         ],
       ),
@@ -6382,394 +6561,778 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _tradingRows.insert(0, _TradingItemRow());
-                    _updateUi();
-                  },
-                  icon: const Icon(Icons.add_shopping_cart, size: 16),
-                  label: Text(context.tr('+ Add Stock Item')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF000080),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                for (int i = 0; i < _tradingRows.length; i++) ...[
-                  _tradingItemRowWidget(_tradingRows[i], i),
-                  const SizedBox(height: 12),
-                ],
+                _stockItemEntrySection(),
+                const SizedBox(height: 14),
+                _stockItemsScrollableTable(),
               ],
             ),
     );
   }
 
-  Widget _tradingItemRowWidget(_TradingItemRow row, int index) {
+  Widget _stockItemEntrySection() {
+    final hasItem = _entryStockItem != null;
+    final itemName = hasItem
+        ? (_entryStockItem!['item_name'] ?? '').toString()
+        : '';
+    final itemCode = hasItem
+        ? ((_entryStockItem!['product_code'] ?? '').toString().isNotEmpty
+            ? _entryStockItem!['product_code'].toString()
+            : (_entryStockItem!['part_number'] ?? '').toString())
+        : '';
+    final brand = hasItem ? (_entryStockItem!['brand'] ?? '').toString() : '';
+    final stockQty = hasItem
+        ? ((_entryStockItem!['quantity'] as num?)?.toDouble() ?? 0.0)
+        : 0.0;
+    final unit = hasItem
+        ? (_entryStockItem!['unit_name'] ?? 'Pcs').toString()
+        : 'Pcs';
+
     return Container(
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: row.isOperational
-            ? Colors.amber.shade50.withOpacity(0.5)
-            : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFFFFFBEB).withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: row.isOperational
-              ? Colors.amber.shade300
-              : Colors.grey.shade200,
+          color: const Color(0xFFD97706).withOpacity(0.4),
+          width: 1.5,
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => _showStockItemSearchSheet(row),
-                  borderRadius: BorderRadius.circular(8),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: context.tr('1. Select Stock Item'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
-                      suffixIcon: const Icon(
-                        Icons.arrow_drop_down,
-                        color: Color(0xFF000080),
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: Color(0xFF000080),
-                        size: 20,
-                      ),
-                    ),
-                    child: Text(
-                      row.selectedStockItem != null
-                          ? '${row.selectedStockItem!['item_name']}${row.selectedStockItem!['brand'] != null && row.selectedStockItem!['brand'].toString().isNotEmpty ? " (${row.selectedStockItem!['brand']})" : ""}'
-                          : context.tr('Tap to search & select stock item...'),
-                      style: GoogleFonts.inter(
-                        fontSize: 13.sp,
-                        fontWeight: row.selectedStockItem != null
-                            ? FontWeight.w700
-                            : FontWeight.w400,
-                        color: row.selectedStockItem != null
-                            ? Colors.black87
-                            : Colors.grey.shade600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () {
-                  row.dispose();
-                  _tradingRows.removeAt(index);
-                  _syncAmountCollected();
+          // ── Top Selector: product code/ part no/alternate no/product name ──
+          InkWell(
+            onTap: () {
+              _showStockItemSearchSheet(
+                onSelected: (item) {
+                  _entryStockItem = item;
+                  final rate = (item['rate'] as num?)?.toDouble() ?? 0.0;
+                  _entryRateController.text =
+                      rate > 0 ? rate.toStringAsFixed(2) : '0.00';
+                  _entryQtyController.text = '1';
+                  _entryDiscountController.text = '0.00';
+                  _entryIsOperational = false;
                   _updateUi();
                 },
-              ),
-            ],
-          ),
-          if (row.selectedStockItem != null) ...[
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: () {
-                row.isOperational = !row.isOperational;
-                if (row.isOperational) {
-                  row.rateController.text = '0.00';
-                  row.discountController.text = '0.00';
-                } else {
-                  final rate =
-                      (row.selectedStockItem!['rate'] as num?)?.toDouble() ??
-                      0.0;
-                  if (rate > 0)
-                    row.rateController.text = rate.toStringAsFixed(2);
-                }
-                _syncAmountCollected();
-                _updateUi();
-              },
-              child: Row(
-                children: [
-                  SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: Checkbox(
-                      value: row.isOperational,
-                      activeColor: const Color(0xFF000080),
-                      onChanged: (val) {
-                        row.isOperational = val ?? false;
-                        if (row.isOperational) {
-                          row.rateController.text = '0.00';
-                          row.discountController.text = '0.00';
-                        } else {
-                          final rate =
-                              (row.selectedStockItem!['rate'] as num?)
-                                  ?.toDouble() ??
-                              0.0;
-                          if (rate > 0)
-                            row.rateController.text = rate.toStringAsFixed(2);
-                        }
-                        _syncAmountCollected();
-                        _updateUi();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      context.tr('Operational / Internal Use'),
-                      style: GoogleFonts.inter(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF000080),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          if (row.isOperational) ...[
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              );
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.amber.shade100.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber.shade400),
+                color: hasItem ? Colors.white : const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hasItem
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFFF59E0B),
+                  width: 1.5,
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    Icons.inventory_2_outlined,
-                    color: Colors.amber.shade900,
-                    size: 18,
+                    Icons.search,
+                    color: const Color(0xFFD97706),
+                    size: 20.sp,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      context.tr('Operational Consumable'),
-                      style: GoogleFonts.inter(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber.shade900,
-                      ),
-                    ),
+                    child: hasItem
+                        ? Row(
+                            children: [
+                              if (itemCode.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD97706).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    itemCode,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11.sp,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF92400E),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  brand.isNotEmpty
+                                      ? '$itemName ($brand)'
+                                      : itemName,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Stock: ${stockQty.toStringAsFixed(1)} $unit',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.blue.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            context.tr(
+                              'product code/ part no/alternate no/product name',
+                            ),
+                            style: GoogleFonts.inter(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF92400E),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: Text(
-                      'Stock: ${row.currentStock.toStringAsFixed(1)} ${row.unitName}',
-                      style: GoogleFonts.inter(
-                        fontSize: 10.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade900,
+                  const SizedBox(width: 4),
+                  if (hasItem)
+                    InkWell(
+                      onTap: () {
+                        _entryStockItem = null;
+                        _entryRateController.text = '0.00';
+                        _entryQtyController.text = '1';
+                        _entryDiscountController.text = '0.00';
+                        _entryIsOperational = false;
+                        _updateUi();
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.close, size: 18, color: Colors.grey),
                       ),
-                    ),
-                  ),
+                    )
+                  else
+                    const Icon(Icons.arrow_drop_down, color: Color(0xFFD97706)),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: row.qtyController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: context.tr('Qty Consumed'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+          ),
+          const SizedBox(height: 8),
+
+          // Operational Consumable Toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              InkWell(
+                onTap: () {
+                  _entryIsOperational = !_entryIsOperational;
+                  if (_entryIsOperational) {
+                    _entryRateController.text = '0.00';
+                    _entryDiscountController.text = '0.00';
+                  } else if (_entryStockItem != null) {
+                    final rate = (_entryStockItem!['rate'] as num?)?.toDouble() ?? 0.0;
+                    if (rate > 0) _entryRateController.text = rate.toStringAsFixed(2);
+                  }
+                  _updateUi();
+                },
+                child: Row(
+                  children: [
+                    SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: Checkbox(
+                        value: _entryIsOperational,
+                        activeColor: Colors.amber.shade800,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (val) {
+                          _entryIsOperational = val ?? false;
+                          if (_entryIsOperational) {
+                            _entryRateController.text = '0.00';
+                            _entryDiscountController.text = '0.00';
+                          } else if (_entryStockItem != null) {
+                            final rate = (_entryStockItem!['rate'] as num?)?.toDouble() ?? 0.0;
+                            if (rate > 0) _entryRateController.text = rate.toStringAsFixed(2);
+                          }
+                          _updateUi();
+                        },
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      context.tr('Operational Consumable (FOC)'),
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: _entryIsOperational ? Colors.amber.shade900 : Colors.grey.shade700,
+                        fontWeight: _entryIsOperational ? FontWeight.bold : FontWeight.w500,
                       ),
                     ),
-                    onChanged: (_) {
-                      _syncAmountCollected();
-                      _updateUi();
-                    },
+                  ],
+                ),
+              ),
+              if (hasItem)
+                Text(
+                  '${context.tr('Stock')}: ${stockQty.toStringAsFixed(1)} $unit',
+                  style: GoogleFonts.inter(
+                    fontSize: 10.5.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue.shade900,
                   ),
                 ),
-              ],
-            ),
-          ] else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: row.rateController,
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: context.tr('Rate'),
-                      prefixText: '$currencySymbol ',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // ── Row with Rate | Qty | Discount | Total | [Add] Button ──
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Rate
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Rate'),
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
                     ),
-                    onChanged: (_) {
-                      _syncAmountCollected();
-                      _updateUi();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        context.tr('Current Stock'),
-                        style: GoogleFonts.inter(
-                          fontSize: 10.sp,
-                          color: Colors.grey.shade700,
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: _entryRateController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 9,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      Text(
-                        '${row.currentStock.toStringAsFixed(1)} ${row.unitName}',
+                      onChanged: (_) => _updateUi(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              // Qty
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Qty'),
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: _entryQtyController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 9,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (_) => _updateUi(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              // Discount
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Discount'),
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: _entryDiscountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 9,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (_) => _updateUi(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              // Total (Read-only live calculated)
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Total'),
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      height: 38,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        _entryTotal.toStringAsFixed(2),
                         style: GoogleFonts.inter(
                           fontSize: 12.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF000080),
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // [ Add ] Button
+              ElevatedButton(
+                onPressed: _addStockItemFromEntry,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF000080),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  elevation: 1,
+                ),
+                child: Text(
+                  context.tr('Add'),
+                  style: GoogleFonts.inter(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stockItemsScrollableTable() {
+    if (_tradingRows.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.table_chart_outlined,
+              size: 32,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              context.tr('No stock items added yet'),
+              style: GoogleFonts.inter(
+                fontSize: 12.5.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            Text(
+              context.tr('Select product code or item above and tap Add'),
+              style: GoogleFonts.inter(
+                fontSize: 11.sp,
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Scrollable Table exactly matching user's sketch
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.swipe, size: 14, color: Colors.grey.shade600),
+            const SizedBox(width: 4),
+            Text(
+              context.tr('Scroll table horizontally to view all columns'),
+              style: GoogleFonts.inter(
+                fontSize: 10.5.sp,
+                color: Colors.grey.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header Row ──
+                Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(8),
+                    ),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      _tableHeaderCell('#', 36, textAlign: TextAlign.center),
+                      _tableDivider(),
+                      _tableHeaderCell(context.tr('Code'), 85),
+                      _tableDivider(),
+                      _tableHeaderCell(context.tr('Item'), 145),
+                      _tableDivider(),
+                      _tableHeaderCell(
+                        context.tr('Rate'),
+                        75,
+                        textAlign: TextAlign.right,
+                      ),
+                      _tableDivider(),
+                      _tableHeaderCell(
+                        context.tr('Qty'),
+                        60,
+                        textAlign: TextAlign.right,
+                      ),
+                      _tableDivider(),
+                      _tableHeaderCell(
+                        context.tr('Discount'),
+                        70,
+                        textAlign: TextAlign.right,
+                      ),
+                      _tableDivider(),
+                      _tableHeaderCell(
+                        context.tr('Total'),
+                        85,
+                        textAlign: TextAlign.right,
+                      ),
+                      _tableDivider(),
+                      _tableHeaderCell('', 60, textAlign: TextAlign.center),
+                    ],
+                  ),
+                ),
+
+                // ── Data Rows ──
+                for (int i = 0; i < _tradingRows.length; i++) ...[
+                  _tableDataRow(_tradingRows[i], i),
+                  if (i < _tradingRows.length - 1)
+                    Container(height: 1, color: Colors.grey.shade200),
+                ],
+
+                // ── Footer / Total Summary Row (matching sketch: 215) ──
+                Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(8),
+                    ),
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      _tableCell('', 36),
+                      _tableDivider(),
+                      _tableCell('', 85),
+                      _tableDivider(),
+                      _tableCell('', 145),
+                      _tableDivider(),
+                      _tableCell('', 75),
+                      _tableDivider(),
+                      _tableCell('', 60),
+                      _tableDivider(),
+                      _tableCell(
+                        context.tr('Total:'),
+                        70,
+                        textAlign: TextAlign.right,
+                        isBold: true,
+                      ),
+                      _tableDivider(),
+                      _tableCell(
+                        totalTradingItemsAmount.toStringAsFixed(2),
+                        85,
+                        textAlign: TextAlign.right,
+                        isBold: true,
+                        textColor: const Color(0xFF000080),
+                      ),
+                      _tableDivider(),
+                      _tableCell('', 60),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: row.qtyController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: context.tr('Qty'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (_) {
-                      _syncAmountCollected();
-                      _updateUi();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: row.discountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: context.tr('Discount'),
-                      prefixText: '$currencySymbol ',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (_) {
-                      _syncAmountCollected();
-                      _updateUi();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 10),
-          TextField(
-            controller: row.remarkController,
-            decoration: InputDecoration(
-              labelText: context.tr('Remarks (optional)'),
-              hintText: context.tr('Remarks for this item...'),
-              prefixIcon: const Icon(
-                Icons.comment_outlined,
-                size: 18,
-                color: Color(0xFF000080),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              isDense: true,
-            ),
           ),
-          const SizedBox(height: 10),
+        ),
+      ],
+    );
+  }
+
+  Widget _tableDivider() {
+    return Container(
+      width: 1,
+      height: double.infinity,
+      color: Colors.grey.shade300,
+    );
+  }
+
+  Widget _tableHeaderCell(
+    String text,
+    double width, {
+    TextAlign textAlign = TextAlign.left,
+  }) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      alignment: textAlign == TextAlign.center
+          ? Alignment.center
+          : (textAlign == TextAlign.right
+              ? Alignment.centerRight
+              : Alignment.centerLeft),
+      child: Text(
+        text,
+        style: GoogleFonts.inter(
+          fontSize: 11.sp,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF1E293B),
+        ),
+        textAlign: textAlign,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _tableCell(
+    String text,
+    double width, {
+    TextAlign textAlign = TextAlign.left,
+    bool isBold = false,
+    Color? textColor,
+  }) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      alignment: textAlign == TextAlign.center
+          ? Alignment.center
+          : (textAlign == TextAlign.right
+              ? Alignment.centerRight
+              : Alignment.centerLeft),
+      child: Text(
+        text,
+        style: GoogleFonts.inter(
+          fontSize: 11.5.sp,
+          fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
+          color: textColor ?? Colors.black87,
+        ),
+        textAlign: textAlign,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _tableDataRow(_TradingItemRow row, int index) {
+    final isEven = index % 2 == 0;
+    return Container(
+      height: 40,
+      color: isEven ? Colors.white : const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          // #
+          _tableCell(
+            '${index + 1}',
+            36,
+            textAlign: TextAlign.center,
+            textColor: Colors.grey.shade600,
+          ),
+          _tableDivider(),
+          // Code
+          _tableCell(
+            row.code,
+            85,
+            isBold: true,
+            textColor: const Color(0xFF000080),
+          ),
+          _tableDivider(),
+          // Item
+          _tableCell(row.itemName, 145),
+          _tableDivider(),
+          // Rate
+          _tableCell(
+            row.rate.toStringAsFixed(2),
+            75,
+            textAlign: TextAlign.right,
+          ),
+          _tableDivider(),
+          // Qty
+          _tableCell(
+            row.qty.toStringAsFixed(row.qty % 1 == 0 ? 0 : 2),
+            60,
+            textAlign: TextAlign.right,
+          ),
+          _tableDivider(),
+          // Discount
+          _tableCell(
+            row.discount.toStringAsFixed(2),
+            70,
+            textAlign: TextAlign.right,
+          ),
+          _tableDivider(),
+          // Total
+          _tableCell(
+            row.isOperational
+                ? '0.00 (FOC)'
+                : row.netTaxable.toStringAsFixed(2),
+            85,
+            textAlign: TextAlign.right,
+            isBold: true,
+            textColor: row.isOperational ? Colors.amber.shade900 : null,
+          ),
+          _tableDivider(),
+          // Action (Edit & Delete)
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(6),
-            ),
+            width: 60,
+            alignment: Alignment.center,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  context.tr('Net Taxable:'),
-                  style: GoogleFonts.inter(
-                    fontSize: 12.sp,
-                    color: Colors.grey.shade800,
+                InkWell(
+                  onTap: () {
+                    _entryStockItem = row.selectedStockItem != null
+                        ? Map<String, dynamic>.from(row.selectedStockItem!)
+                        : null;
+                    _entryRateController.text = row.rateController.text;
+                    _entryQtyController.text = row.qtyController.text;
+                    _entryDiscountController.text = row.discountController.text;
+                    _entryRemarkController.text = row.remarkController.text;
+                    _entryIsOperational = row.isOperational;
+                    row.dispose();
+                    _tradingRows.removeAt(index);
+                    _syncAmountCollected();
+                    _updateUi();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 16,
+                      color: Color(0xFF000080),
+                    ),
                   ),
                 ),
-                Text(
-                  '$currencySymbol ${row.netTaxable.toStringAsFixed(2)}',
-                  style: GoogleFonts.inter(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF000080),
+                InkWell(
+                  onTap: () {
+                    row.dispose();
+                    _tradingRows.removeAt(index);
+                    _syncAmountCollected();
+                    _updateUi();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.delete_outline,
+                      size: 16,
+                      color: Colors.red,
+                    ),
                   ),
                 ),
               ],

@@ -877,7 +877,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         }
       } catch (_) {}
 
-      _expenseHeadsNotifier.value = expenseProvider.expenseHeads;
+      _expenseHeadsNotifier.value = expenseProvider.expenseHeads.where((head) {
+        final name = (head['name'] ?? '').toString().trim().toLowerCase();
+        return name != 'salary' && name != 'salary advance';
+      }).toList();
       _suppliersNotifier.value = expenseProvider.suppliers;
       _stocksNotifier.value = inventoryProvider.stockItems;
       _branchesNotifier.value = branches;
@@ -937,6 +940,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     } finally {
       _isLoadingHeadItemsNotifier.value = false;
     }
+  }
+
+  bool _isSalaryWagesHead(Map<String, dynamic>? head) {
+    final name = (head?['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll('&', 'and')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    return name == 'salary and wages';
   }
 
   void _showExpenseHeadSelector() {
@@ -1589,8 +1602,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             return ValueListenableBuilder<bool>(
               valueListenable: _isCustomExpenseNameNotifier,
               builder: (context, isCustom, child) {
+                final isStaffExpense = _isSalaryWagesHead(selectedExpenseHead);
                 final List<dynamic> stocks = _stocksNotifier.value;
-                final stockNames = stocks.where((s) {
+                final stockNames = isStaffExpense ? <String>[] : stocks.where((s) {
                   final stock = Map<String, dynamic>.from(s as Map);
                   return stock['expense_head_id']?.toString() == selectedExpenseHead?['id']?.toString();
                 }).map((s) => (s['item_name'] ?? '').toString()).where((n) => n.isNotEmpty).toList();
@@ -1598,7 +1612,33 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 final combinedSet = <String>{...headItems, ...stockNames};
                 final combinedItems = combinedSet.toList()..sort();
 
-                if (combinedItems.isNotEmpty && !isCustom) {
+                if (isStaffExpense && combinedItems.isEmpty) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLabel(context.tr('Select Staff *')),
+                      const SizedBox(height: 6),
+                      InputDecorator(
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFFAFAFA),
+                        ),
+                        child: Text(
+                          context.tr('No staff available for this branch'),
+                          style: GoogleFonts.inter(
+                            fontSize: 14.sp,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                if (combinedItems.isNotEmpty && (isStaffExpense || !isCustom)) {
                   final String? currentValue = combinedItems.contains(_expenseNameController.text)
                       ? _expenseNameController.text
                       : null;
@@ -1608,7 +1648,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     children: [
                       _buildDropdownField(
                         context,
-                        label: context.tr('Select Stock / Expense Item *'),
+                        label: context.tr(isStaffExpense ? 'Select Staff *' : 'Select Stock / Expense Item *'),
                         icon: Icons.shopping_bag_outlined,
                         hintText: context.tr('Select Expense Item'),
                         value: currentValue,
@@ -1620,13 +1660,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   style: GoogleFonts.inter(fontSize: 15.sp),
                                 ),
                               )),
-                          DropdownMenuItem<String>(
-                            value: '__CUSTOM__',
-                            child: Text(
-                              '+ ${context.tr("Custom Expense Name")}',
-                              style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
+                          if (!isStaffExpense)
+                            DropdownMenuItem<String>(
+                              value: '__CUSTOM__',
+                              child: Text(
+                                '+ ${context.tr("Custom Expense Name")}',
+                                style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
+                              ),
                             ),
-                          ),
                         ],
                         onChanged: (val) {
                           if (val == '__CUSTOM__') {
@@ -1634,6 +1675,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             _isCustomExpenseNameNotifier.value = true;
                           } else {
                             _expenseNameController.text = val ?? '';
+                            if (isStaffExpense) {
+                              _isCustomExpenseNameNotifier.value = false;
+                            }
                           }
                         },
                       ),

@@ -69,6 +69,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
   final List<Map<String, dynamic>> _extras = [];
   final List<Map<String, dynamic>> _labourCharges = [];
   final List<Map<String, dynamic>> _services = [];
+  List<Map<String, dynamic>> _availableTaxes = [];
   List<Map<String, dynamic>> _pricingServiceCategories = [];
   List<Map<String, dynamic>> _pricingAvailableServices = [];
   String? _selectedPricingCategory;
@@ -346,6 +347,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
         _oilGrades = _maps(result['oil_grades']);
         _staff = _maps(leadFormData['staff']);
         _companySealUrl = (leadFormData['company_seal_url'] ?? '').toString();
+        _availableTaxes = _maps(leadFormData['taxes']);
         _pricingServiceCategories =
             (leadFormData['service_categories'] as List? ?? [])
                 .map((item) => Map<String, dynamic>.from(item as Map))
@@ -1132,11 +1134,11 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
             ?.toUtc()
             .toIso8601String(),
         'prepared_by_id': (_preparedBy?['id'] ?? '').toString().isNotEmpty ? _preparedBy!['id'] : null,
-        'subtotal': 0,
-        'tax_percentage': 0,
-        'tax_amount': 0,
+        'subtotal': _calculateSubtotal(),
+        'tax_percentage': _calculateTaxPercent(),
+        'tax_amount': _calculateSubtotal() * (_calculateTaxPercent() / 100.0),
         'discount': 0,
-        'grand_total': 0,
+        'grand_total': _calculateSubtotal() + (_calculateSubtotal() * (_calculateTaxPercent() / 100.0)),
         'is_grand_total': true,
       };
       final result = widget.existingQuotation != null
@@ -3143,6 +3145,47 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
     );
   }
 
+  double _calculateSubtotal() {
+    final serviceTotal = _reportedIssues.fold<double>(
+      0,
+      (sum, row) => sum + _issueLineTotal(row),
+    );
+    final servicesTotal = _services.fold<double>(
+      0,
+      (sum, row) => sum + _serviceLineTotal(row),
+    );
+    final accessoriesTotal = _accessories.fold<double>(
+      0,
+      (sum, row) => sum + _pricedRowTotal(row, extra: false),
+    );
+    final extrasTotal = _extras.fold<double>(
+      0,
+      (sum, row) => sum + _pricedRowTotal(row, extra: true),
+    );
+    final activityLabourTotal = _reportedIssues.fold<double>(0, (sum, report) {
+      final activities = report['activities'] as List? ?? [];
+      return sum +
+          activities.fold<double>(0, (actSum, raw) {
+            final act = raw as Map;
+            final cost = double.tryParse((act['cost'] ?? '').toString()) ?? 0.0;
+            final disc = double.tryParse((act['discount'] ?? '').toString()) ?? 0.0;
+            return actSum + (cost - disc).clamp(0.0, double.infinity);
+          });
+    });
+    final manualLabourTotal = _labourCharges.fold<double>(
+      0,
+      (sum, row) => sum + _pricedRowTotal(row, extra: true),
+    );
+    return serviceTotal + servicesTotal + accessoriesTotal + extrasTotal + activityLabourTotal + manualLabourTotal;
+  }
+
+  double _calculateTaxPercent() {
+    return _availableTaxes.fold<double>(
+      0.0,
+      (sum, t) => sum + ((t['percent'] as num?)?.toDouble() ?? 0.0),
+    );
+  }
+
   Widget _serviceDetailsTab() {
     final currencySymbol =
         context.watch<AuthProvider>().currencySymbol.trim().isNotEmpty
@@ -3171,19 +3214,10 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       (sum, row) => sum + _pricedRowTotal(row, extra: true),
     );
     final labourTotal = activityLabourTotal + manualLabourTotal;
-
-    final grandTotal =
-        serviceTotal +
-        servicesTotal +
-        _accessories.fold<double>(
-          0,
-          (sum, row) => sum + _pricedRowTotal(row, extra: false),
-        ) +
-        _extras.fold<double>(
-          0,
-          (sum, row) => sum + _pricedRowTotal(row, extra: true),
-        ) +
-        labourTotal;
+    final subtotal = _calculateSubtotal();
+    final taxPercent = _calculateTaxPercent();
+    final taxAmount = subtotal * (taxPercent / 100.0);
+    final grandTotal = subtotal + taxAmount;
 
     return ListView(
       key: const ValueKey('quotation_pricing_list'),
@@ -3876,13 +3910,80 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
               color: const Color(0xFF000080).withValues(alpha: 0.15),
             ),
           ),
-          child: Text(
-            'Grand Total: $currencySymbol ${grandTotal.toStringAsFixed(2)}',
-            style: GoogleFonts.inter(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF000080),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    context.tr('Subtotal'),
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  Text(
+                    '$currencySymbol ${subtotal.toStringAsFixed(2)}',
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+              if (taxPercent > 0) ...[
+                SizedBox(height: 6.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${context.tr("Tax")} (${taxPercent.toStringAsFixed(taxPercent % 1 == 0 ? 0 : 1)}%)',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      '$currencySymbol ${taxAmount.toStringAsFixed(2)}',
+                      style: GoogleFonts.inter(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.h),
+                child: const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    context.tr('Grand Total'),
+                    style: GoogleFonts.inter(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF000080),
+                    ),
+                  ),
+                  Text(
+                    '$currencySymbol ${grandTotal.toStringAsFixed(2)}',
+                    style: GoogleFonts.inter(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF000080),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ],

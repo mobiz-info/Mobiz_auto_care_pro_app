@@ -26,24 +26,7 @@ class InsuranceScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(height: 20.h),
-            Text(
-              'Insurance Module',
-              style: GoogleFonts.inter(
-                fontSize: 22.sp,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF0F172A),
-              ),
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              'Manage insurance jobs and renewal reminders',
-              style: GoogleFonts.inter(
-                fontSize: 14.sp,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            SizedBox(height: 32.h),
+            
 
             // ── New Job card ──────────────────────────────────────────────
             _InsuranceMenuCard(
