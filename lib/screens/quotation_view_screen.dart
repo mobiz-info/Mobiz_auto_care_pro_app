@@ -753,12 +753,8 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
               border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
             ),
             child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
-                pw.Text(
-                  'Powered by Mobiz Technologies FZE | www.mobiztechnologies.com',
-                  style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey500),
-                ),
                 pw.Text(
                   'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
                   style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey500),
@@ -1585,11 +1581,21 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
           pw.SizedBox(height: 16),
           pw.Center(
             child: pw.Text(
-              'Thank you for choosing $branchName!',
+              'Thank you for choosing ${branchName.isNotEmpty ? branchName : companyName}!',
               style: pw.TextStyle(
                 fontSize: 9.5,
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.indigo900,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Center(
+            child: pw.Text(
+              'Powered by Mobiz Technologies FZE | www.mobiztechnologies.com',
+              style: const pw.TextStyle(
+                fontSize: 7.5,
+                color: PdfColors.grey500,
               ),
             ),
           ),
@@ -1802,8 +1808,9 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
       }
       buffer.writeln("*Grand Total: $currencySymbol${grandTotal.toStringAsFixed(2)}*");
     }
-    buffer.writeln("\nThank you for choosing $branchName!");
-    buffer.writeln("Powered by Mobiz Technologies");
+    final thanksName = branchName.isNotEmpty ? branchName : companyName;
+    buffer.writeln("\nThank you for choosing $thanksName!");
+    buffer.writeln("Powered by Mobiz Technologies FZE | www.mobiztechnologies.com");
 
     return buffer.toString();
   }
