@@ -949,6 +949,9 @@ class _LeadsListTabState extends State<_LeadsListTab>
                         color: Colors.grey.shade600,
                       ),
                       onSelected: (action) {
+                        if (action == 'quote') {
+                          _openQuotationForLead(Map<String, dynamic>.from(lead));
+                        }
                         if (action == 'view_job_order') {
                           Navigator.push(
                             context,
@@ -990,6 +993,16 @@ class _LeadsListTabState extends State<_LeadsListTab>
                         }
                       },
                       itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'quote',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.request_quote_outlined, size: 16, color: Color(0xFF000080)),
+                              const SizedBox(width: 8),
+                              Text(context.tr('Create Quotation')),
+                            ],
+                          ),
+                        ),
                         if ((lead['job_card_id'] ?? '').toString().isNotEmpty)
                           PopupMenuItem(
                             value: 'view_job_order',
@@ -1371,117 +1384,35 @@ class _LeadsListTabState extends State<_LeadsListTab>
                       ),
                     ),
                     const Spacer(),
-                    if (lead['status'] == 'success' &&
-                        (lead['job_card_id'] ?? '').toString().isEmpty)
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => JobCardCreateScreen(
-                                initialLead: Map<String, dynamic>.from(lead),
-                              ),
-                            ),
-                          );
-                          if (result == true) {
-                            _fetchLeads();
-                          }
-                        },
-                        icon: Icon(
-                          Icons.assignment_turned_in_outlined,
-                          size: 14.r,
+                    ElevatedButton.icon(
+                      onPressed: () => _openQuotationForLead(
+                        Map<String, dynamic>.from(lead),
+                      ),
+                      icon: Icon(
+                        Icons.request_quote_outlined,
+                        size: 14.r,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        context.tr('Quote Now'),
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.sp,
                           color: Colors.white,
-                        ),
-                        label: Text(
-                          context.tr('Create Job Order'),
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12.sp,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF16A34A),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 8.h,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                        ),
-                      )
-                    else if ((lead['job_card_id'] ?? '')
-                        .toString()
-                        .isNotEmpty)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => JobCardCreateScreen(
-                                existingJobCardId:
-                                    lead['job_card_id'].toString(),
-                              ),
-                            ),
-                          );
-                        },
-                        icon: Icon(
-                          Icons.assignment_turned_in,
-                          size: 14.r,
-                          color: Colors.white,
-                        ),
-                        label: Text(
-                          context.tr('View Job Order'),
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12.sp,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF000080),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 8.h,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                        ),
-                      )
-                    else
-                      ElevatedButton.icon(
-                        onPressed: () => _openQuotationForLead(
-                          Map<String, dynamic>.from(lead),
-                        ),
-                        icon: Icon(
-                          Icons.request_quote_outlined,
-                          size: 14.r,
-                          color: Colors.white,
-                        ),
-                        label: Text(
-                          context.tr('Quote Now'),
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12.sp,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF000080),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 8.h,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
                         ),
                       ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF000080),
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
