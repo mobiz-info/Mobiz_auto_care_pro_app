@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../utils/job_card_pdf_helper.dart';
 import '../widgets/job_card_responsive.dart';
 import 'job_card_create_screen.dart';
+import 'job_card/widgets/vehicle/vehicle_before_after_photos_card.dart';
 
 class JobCardDetailScreen extends StatefulWidget {
   final String jobCardId;
@@ -993,6 +994,16 @@ class _JobCardDetailScreenState extends State<JobCardDetailScreen> {
               ],
 
               _buildInspectionDetailsSection(jc),
+
+              // ── Vehicle Before & After Photos ──────────────────────────────
+              VehicleBeforeAfterPhotosCard(
+                jobCardId: widget.jobCardId,
+                token: context.read<AuthProvider>().token,
+                initialBeforePhotos: jc['before_photos'] as List? ?? [],
+                initialAfterPhotos: jc['after_photos'] as List? ?? [],
+                onPhotosChanged: _fetchDetails,
+              ),
+              const SizedBox(height: 14),
 
               // ── Services Table ──────────────────────────────────────────────
               if (services.isNotEmpty) ...[

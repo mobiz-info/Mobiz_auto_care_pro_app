@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../providers/language_provider.dart';
 import '../../controllers/job_card_controller.dart';
 import '../common/section_card.dart';
+import '../vehicle/vehicle_before_after_photos_card.dart';
 
 class JobProgressTabView extends StatelessWidget {
   final JobCardController controller;
@@ -1087,6 +1088,7 @@ class JobProgressTabView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              VehicleBeforeAfterPhotosCard(controller: controller),
               if (issues.isEmpty)
                 SectionCard(
                   title: context.tr('Job Progress'),

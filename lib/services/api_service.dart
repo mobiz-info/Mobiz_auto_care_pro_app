@@ -3601,8 +3601,12 @@ class ApiService {
     Map<String, dynamic> data,
     String token, {
     List<List<XFile>> issuePhotos = const [],
+    List<XFile> beforePhotos = const [],
+    List<XFile> afterPhotos = const [],
   }) async {
-    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+    final hasIssuePhotos = issuePhotos.any((photos) => photos.isNotEmpty);
+    final hasVehiclePhotos = beforePhotos.isNotEmpty || afterPhotos.isNotEmpty;
+    if (hasIssuePhotos || hasVehiclePhotos) {
       final photoBytes = <(XFile, List<int>)>[];
       var totalPhotoBytes = 0;
       for (final photos in issuePhotos) {
@@ -3612,11 +3616,21 @@ class ApiService {
           photoBytes.add((photo, bytes));
         }
       }
-      if (totalPhotoBytes > 750 * 1024) {
+      for (final photo in beforePhotos) {
+        final bytes = await photo.readAsBytes();
+        totalPhotoBytes += bytes.length;
+        photoBytes.add((photo, bytes));
+      }
+      for (final photo in afterPhotos) {
+        final bytes = await photo.readAsBytes();
+        totalPhotoBytes += bytes.length;
+        photoBytes.add((photo, bytes));
+      }
+      if (totalPhotoBytes > 15 * 1024 * 1024) {
         return {
           'success': false,
           'message':
-              'Issue photos are still too large to upload together. Remove some photos and try again.',
+              'Photos are too large to upload together. Remove some photos and try again.',
         };
       }
       final request = http.MultipartRequest(
@@ -3636,6 +3650,26 @@ class ApiService {
             ),
           );
         }
+      }
+      for (final photo in beforePhotos) {
+        final bytes = photoBytes[photoIndex++].$2;
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'before_photos',
+            bytes,
+            filename: photo.name,
+          ),
+        );
+      }
+      for (final photo in afterPhotos) {
+        final bytes = photoBytes[photoIndex++].$2;
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'after_photos',
+            bytes,
+            filename: photo.name,
+          ),
+        );
       }
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
@@ -3658,8 +3692,12 @@ class ApiService {
     Map<String, dynamic> data,
     String token, {
     List<List<XFile>> issuePhotos = const [],
+    List<XFile> beforePhotos = const [],
+    List<XFile> afterPhotos = const [],
   }) async {
-    if (issuePhotos.any((photos) => photos.isNotEmpty)) {
+    final hasIssuePhotos = issuePhotos.any((photos) => photos.isNotEmpty);
+    final hasVehiclePhotos = beforePhotos.isNotEmpty || afterPhotos.isNotEmpty;
+    if (hasIssuePhotos || hasVehiclePhotos) {
       final photoBytes = <(XFile, List<int>)>[];
       var totalPhotoBytes = 0;
       for (final photos in issuePhotos) {
@@ -3669,11 +3707,21 @@ class ApiService {
           photoBytes.add((photo, bytes));
         }
       }
-      if (totalPhotoBytes > 750 * 1024) {
+      for (final photo in beforePhotos) {
+        final bytes = await photo.readAsBytes();
+        totalPhotoBytes += bytes.length;
+        photoBytes.add((photo, bytes));
+      }
+      for (final photo in afterPhotos) {
+        final bytes = await photo.readAsBytes();
+        totalPhotoBytes += bytes.length;
+        photoBytes.add((photo, bytes));
+      }
+      if (totalPhotoBytes > 15 * 1024 * 1024) {
         return {
           'success': false,
           'message':
-              'Issue photos are still too large to upload together. Remove some photos and try again.',
+              'Photos are too large to upload together. Remove some photos and try again.',
         };
       }
       final request = http.MultipartRequest(
@@ -3694,6 +3742,26 @@ class ApiService {
           );
         }
       }
+      for (final photo in beforePhotos) {
+        final bytes = photoBytes[photoIndex++].$2;
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'before_photos',
+            bytes,
+            filename: photo.name,
+          ),
+        );
+      }
+      for (final photo in afterPhotos) {
+        final bytes = photoBytes[photoIndex++].$2;
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'after_photos',
+            bytes,
+            filename: photo.name,
+          ),
+        );
+      }
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
       return _decodeJobCardResponse(response);
@@ -3706,6 +3774,45 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode(data),
+    );
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> uploadJobCardVehiclePhoto({
+    required String jobCardId,
+    required XFile photo,
+    required String photoType,
+    required String token,
+    String? caption,
+  }) async {
+    final url = Uri.parse('$baseUrl/job-cards/$jobCardId/photos/');
+    final request = http.MultipartRequest('POST', url)
+      ..headers['Authorization'] = 'Bearer $token'
+      ..fields['photo_type'] = photoType;
+    if (caption != null && caption.isNotEmpty) {
+      request.fields['caption'] = caption;
+    }
+    final bytes = await photo.readAsBytes();
+    request.files.add(
+      http.MultipartFile.fromBytes('photo', bytes, filename: photo.name),
+    );
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteJobCardVehiclePhoto({
+    required String jobCardId,
+    required String photoId,
+    required String token,
+  }) async {
+    final url = Uri.parse('$baseUrl/job-cards/$jobCardId/photos/?photo_id=$photoId');
+    final response = await http.delete(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
     );
     return _decodeJobCardResponse(response);
   }

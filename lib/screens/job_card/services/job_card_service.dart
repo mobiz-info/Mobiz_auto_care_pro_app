@@ -58,8 +58,16 @@ class JobCardService {
     Map<String, dynamic> payload,
     String token, {
     List<List<XFile>>? issuePhotos,
+    List<XFile>? beforePhotos,
+    List<XFile>? afterPhotos,
   }) {
-    return ApiService.createJobCard(payload, token, issuePhotos: issuePhotos ?? const []);
+    return ApiService.createJobCard(
+      payload,
+      token,
+      issuePhotos: issuePhotos ?? const [],
+      beforePhotos: beforePhotos ?? const [],
+      afterPhotos: afterPhotos ?? const [],
+    );
   }
 
   static Future<Map<String, dynamic>> updateJobCard(
@@ -67,8 +75,45 @@ class JobCardService {
     Map<String, dynamic> payload,
     String token, {
     List<List<XFile>>? issuePhotos,
+    List<XFile>? beforePhotos,
+    List<XFile>? afterPhotos,
   }) {
-    return ApiService.updateJobCard(jobCardId, payload, token, issuePhotos: issuePhotos ?? const []);
+    return ApiService.updateJobCard(
+      jobCardId,
+      payload,
+      token,
+      issuePhotos: issuePhotos ?? const [],
+      beforePhotos: beforePhotos ?? const [],
+      afterPhotos: afterPhotos ?? const [],
+    );
+  }
+
+  static Future<Map<String, dynamic>> uploadJobCardVehiclePhoto({
+    required String jobCardId,
+    required XFile photo,
+    required String photoType,
+    required String token,
+    String? caption,
+  }) {
+    return ApiService.uploadJobCardVehiclePhoto(
+      jobCardId: jobCardId,
+      photo: photo,
+      photoType: photoType,
+      token: token,
+      caption: caption,
+    );
+  }
+
+  static Future<Map<String, dynamic>> deleteJobCardVehiclePhoto({
+    required String jobCardId,
+    required String photoId,
+    required String token,
+  }) {
+    return ApiService.deleteJobCardVehiclePhoto(
+      jobCardId: jobCardId,
+      photoId: photoId,
+      token: token,
+    );
   }
 
   static Future<Map<String, dynamic>> createJobCardIssue(Map<String, dynamic> payload, String token) {

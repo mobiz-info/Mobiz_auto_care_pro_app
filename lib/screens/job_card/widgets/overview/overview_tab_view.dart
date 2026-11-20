@@ -9,6 +9,7 @@ import '../../../../providers/language_provider.dart';
 import '../../../../widgets/automotive_card.dart';
 import '../../controllers/job_card_controller.dart';
 import '../../models/job_card_model.dart';
+import '../vehicle/vehicle_before_after_photos_card.dart';
 
 class OverviewTabView extends StatelessWidget {
   final JobCardController controller;
@@ -583,6 +584,9 @@ class OverviewTabView extends StatelessWidget {
                   ),
                 ],
               ),
+
+              // ── Vehicle Before & After Photos ──────────────────────────────
+              VehicleBeforeAfterPhotosCard(controller: controller),
 
               // ── 3. Inspection Details (Full Breakdown + Damage Marks) ──────
               _sectionCard(

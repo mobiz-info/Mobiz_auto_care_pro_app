@@ -43,6 +43,48 @@ class JobCardController extends ChangeNotifier {
   final TextEditingController appointmentDetailsController = TextEditingController();
   final TextEditingController internalNotesController = TextEditingController();
 
+  List<XFile> beforePhotos = [];
+  List<XFile> afterPhotos = [];
+  List<Map<String, dynamic>> existingBeforePhotos = [];
+  List<Map<String, dynamic>> existingAfterPhotos = [];
+  List<String> deletePhotoIds = [];
+
+  void addBeforePhotos(List<XFile> photos) {
+    beforePhotos.addAll(photos);
+    notifyListeners();
+  }
+
+  void removeBeforePhoto(int index) {
+    beforePhotos.removeAt(index);
+    notifyListeners();
+  }
+
+  void removeExistingBeforePhoto(int index) {
+    final photo = existingBeforePhotos.removeAt(index);
+    if (photo['id'] != null) {
+      deletePhotoIds.add(photo['id'].toString());
+    }
+    notifyListeners();
+  }
+
+  void addAfterPhotos(List<XFile> photos) {
+    afterPhotos.addAll(photos);
+    notifyListeners();
+  }
+
+  void removeAfterPhoto(int index) {
+    afterPhotos.removeAt(index);
+    notifyListeners();
+  }
+
+  void removeExistingAfterPhoto(int index) {
+    final photo = existingAfterPhotos.removeAt(index);
+    if (photo['id'] != null) {
+      deletePhotoIds.add(photo['id'].toString());
+    }
+    notifyListeners();
+  }
+
   bool isSubmitting = false;
 
   bool get snapshotMode => initialLead != null || existingJobCardId != null;
@@ -356,6 +398,13 @@ class JobCardController extends ChangeNotifier {
     currentService = (data['current_service'] ?? '').toString();
     selectedSection = (data['current_section'] ?? sections.first).toString();
 
+    existingBeforePhotos = (data['before_photos'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    existingAfterPhotos = (data['after_photos'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+
     pricingCtrl.loadExistingJobCard(data);
     notifyListeners();
   }
@@ -472,6 +521,10 @@ class JobCardController extends ChangeNotifier {
       payload['vehicle_id'] = vehicleCtrl.selectedVehicle!['id'];
     }
 
+    if (deletePhotoIds.isNotEmpty) {
+      payload['delete_photo_ids'] = deletePhotoIds;
+    }
+
     try {
       final jobCardId = savedJobCardId ?? existingJobCardId;
       final res = jobCardId != null
@@ -480,11 +533,15 @@ class JobCardController extends ChangeNotifier {
               payload,
               token,
               issuePhotos: issuePhotoUploads,
+              beforePhotos: beforePhotos,
+              afterPhotos: afterPhotos,
             )
           : await JobCardService.createJobCard(
               payload,
               token,
               issuePhotos: issuePhotoUploads,
+              beforePhotos: beforePhotos,
+              afterPhotos: afterPhotos,
             );
 
       isSubmitting = false;
