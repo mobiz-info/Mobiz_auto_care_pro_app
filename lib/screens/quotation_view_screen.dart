@@ -241,54 +241,6 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
     }
   }
 
-  Future<void> _reviseQuotation() async {
-    final q = _quotation;
-    if (q == null) return;
-    if (widget.jobWorkflow) {
-      final updated = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => JobQuotationFormScreen(
-            lead: q['lead'] is Map
-                ? Map<String, dynamic>.from(q['lead'] as Map)
-                : null,
-            existingQuotation: {
-              ...q,
-              'revision_of_id': q['id'],
-            },
-          ),
-        ),
-      );
-      if (updated == true && mounted) {
-        await _loadQuotationDetails();
-      }
-      return;
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => QuotationCreateScreen(
-          customer: {
-            'id': q['customer_id'],
-            'name': q['customer_name'],
-            'phone': q['customer_phone'],
-            'type': q['customer_type'],
-          },
-          vehicle: {
-            'id': q['vehicle_id'],
-            'no': q['vehicle_number'],
-            'type': q['vehicle_type'],
-          },
-          existingQuotation: q,
-          leadId: q['lead_id']?.toString(),
-          revisionOfId: widget.quotationId,
-          jobWorkflow: widget.jobWorkflow,
-        ),
-      ),
-    );
-    if (mounted) await _loadQuotationDetails();
-  }
-
   Future<void> _deleteQuotation() async {
     final token = context.read<AuthProvider>().token;
     if (token == null || _quotation == null || _isPipelineActionRunning) return;
@@ -2138,14 +2090,6 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
               icon: const Icon(Icons.edit_outlined, color: Colors.white),
               tooltip: context.tr('Edit quotation'),
               onPressed: _isPipelineActionRunning ? null : _editQuotation,
-            ),
-          if (_quotation != null &&
-              _hasPricedItems &&
-              (_quotation!['job_card_id'] ?? '').toString().isEmpty)
-            IconButton(
-              icon: const Icon(Icons.edit_note_outlined, color: Colors.white),
-              tooltip: context.tr('Create revised quotation'),
-              onPressed: _isPipelineActionRunning ? null : _reviseQuotation,
             ),
           if (_quotation != null && _quotation!['is_accepted'] != true)
             IconButton(
