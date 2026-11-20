@@ -15,6 +15,7 @@ import 'widgets/common/section_card.dart';
 import 'widgets/customer/customer_profile_card.dart';
 import 'widgets/customer/customer_search_card.dart';
 import 'widgets/inspection/inspection_tab_view.dart';
+import 'widgets/inspection/inspection_summary_tab_view.dart';
 import 'widgets/job_progress/job_progress_tab_view.dart';
 import 'widgets/overview/overview_tab_view.dart';
 import 'widgets/pricing/pricing_tab_view.dart';
@@ -61,14 +62,14 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     );
 
     _formTabs = TabController(
-      length: 9,
-      initialIndex: widget.initialTabIndex.clamp(0, 8),
+      length: 10,
+      initialIndex: widget.initialTabIndex.clamp(0, 9),
       vsync: this,
     );
 
     _formTabs.addListener(() {
       if (mounted) setState(() {});
-      if (_formTabs.index == 8) {
+      if (_formTabs.index == 9) {
         final token = context.read<AuthProvider>().token;
         if (token != null) {
           _controller.billingCtrl.loadJobCardInvoice(
@@ -93,7 +94,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
   }
 
   Future<void> _saveStageAndExit() async {
-    if (_formTabs.index < 3 || _formTabs.index > 6) return;
+    if (_formTabs.index < 4 || _formTabs.index > 7) return;
     if (!_controller.validateStageDraft(_formTabs.index, onMessage: (msg) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(msg))),
@@ -105,7 +106,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     if (token == null) return;
     final res = await _controller.submitJobCard(
       token: token,
-      statusOverride: _formTabs.index >= 5 ? 'in_progress' : null,
+      statusOverride: _formTabs.index >= 6 ? 'in_progress' : null,
       onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(msg))),
@@ -125,9 +126,11 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
 
+    final billingTotal = _controller.pricingCtrl.calculateBillingTotal(_controller.issuesCtrl.reportedIssues);
     final result = await billingCtrl.createJobCardInvoice(
       jobCardId: _controller.savedJobCardId ?? widget.existingJobCardId,
       token: token,
+      billingTotal: billingTotal,
       submitJobCard: () async {
         final res = await _controller.submitJobCard(
           token: token,
@@ -202,9 +205,14 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       _formTabs.index = 3;
       return;
     }
-    // Tab 3: Services & Issues -> Accessories (Tab 4)
+    // Tab 3: Inspection Summary -> Services & Issues (Tab 4)
     if (_formTabs.index == 3) {
-      if (!_controller.validateStageDraft(3, onMessage: (msg) {
+      _formTabs.index = 4;
+      return;
+    }
+    // Tab 4: Services & Issues -> Accessories (Tab 5)
+    if (_formTabs.index == 4) {
+      if (!_controller.validateStageDraft(4, onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(msg))),
         );
@@ -223,12 +231,12 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
         },
       );
       if (res['success'] == true && mounted) {
-        _formTabs.index = 4;
+        _formTabs.index = 5;
       }
       return;
     }
-    // Tab 4: Accessories -> Job Progress (Tab 5)
-    if (_formTabs.index == 4) {
+    // Tab 5: Accessories -> Job Progress (Tab 6)
+    if (_formTabs.index == 5) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
       final res = await _controller.submitJobCard(
@@ -241,13 +249,13 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
         },
       );
       if (res['success'] == true && mounted) {
-        _formTabs.index = 5;
+        _formTabs.index = 6;
       }
       return;
     }
-    // Tab 5: Job Progress -> Pricing (Tab 6)
-    if (_formTabs.index == 5) {
-      if (!_controller.validateStageDraft(5, onMessage: (msg) {
+    // Tab 6: Job Progress -> Pricing (Tab 7)
+    if (_formTabs.index == 6) {
+      if (!_controller.validateStageDraft(6, onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(msg))),
         );
@@ -267,12 +275,12 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
         },
       );
       if (res['success'] == true && mounted) {
-        _formTabs.index = 6;
+        _formTabs.index = 7;
       }
       return;
     }
-    // Tab 6: Pricing -> Overview (Tab 7)
-    if (_formTabs.index == 6) {
+    // Tab 7: Pricing -> Overview (Tab 8)
+    if (_formTabs.index == 7) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
       final res = await _controller.submitJobCard(
@@ -285,13 +293,13 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
         },
       );
       if (res['success'] == true && mounted) {
-        _formTabs.index = 7;
+        _formTabs.index = 8;
       }
       return;
     }
-    // Tab 7: Overview -> Billing (Tab 8)
-    if (_formTabs.index == 7) {
-      _formTabs.index = 8;
+    // Tab 8: Overview -> Billing (Tab 9)
+    if (_formTabs.index == 8) {
+      _formTabs.index = 9;
       return;
     }
     if (_controller.billingCtrl.jobCardInvoice != null) {
@@ -389,6 +397,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                 Tab(text: context.tr('Customer Details')),
                 Tab(text: context.tr('Vehicle Details')),
                 Tab(text: context.tr('Inspection')),
+                Tab(text: context.tr('Inspection Summary')),
                 Tab(text: context.tr('Services & Complaints')),
                 Tab(text: context.tr('Accessories')),
                 Tab(text: context.tr('Job Progress')),
@@ -453,6 +462,9 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                             ),
                           );
                         },
+                      ),
+                      InspectionSummaryTabView(
+                        controller: _controller.inspectionCtrl,
                       ),
                       _tabScroll([
                         ReportedIssuesCard(rootController: _controller),

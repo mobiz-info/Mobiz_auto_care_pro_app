@@ -11,6 +11,7 @@ import '../widgets/job_card_responsive.dart';
 import 'quotation_view_screen.dart';
 import 'job_card/controllers/job_card_inspection_controller.dart';
 import 'job_card/widgets/inspection/inspection_tab_view.dart';
+import 'job_card/widgets/inspection/inspection_summary_tab_view.dart';
 import 'job_card/widgets/common/job_item_widgets.dart';
 import 'job_card/widgets/pricing/accessory_picker_dialog.dart';
 
@@ -137,7 +138,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 6, vsync: this);
+    _tabs = TabController(length: 7, vsync: this);
     _tabs.addListener(_handleTabChange);
     _prefillLead();
     _loadFormData();
@@ -832,17 +833,21 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       return;
     }
     if (_tabs.index == 3) {
-      if (_selectedPricingService == null && _leadServices.isNotEmpty) {
-        _prefillPricingServiceFromLead(_leadServices.first);
-      }
       _tabs.animateTo(4);
       return;
     }
     if (_tabs.index == 4) {
+      if (_selectedPricingService == null && _leadServices.isNotEmpty) {
+        _prefillPricingServiceFromLead(_leadServices.first);
+      }
       _tabs.animateTo(5);
       return;
     }
     if (_tabs.index == 5) {
+      _tabs.animateTo(6);
+      return;
+    }
+    if (_tabs.index == 6) {
       await _save();
       return;
     }
@@ -905,7 +910,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
         _extras.isEmpty &&
         _labourCharges.isEmpty &&
         !hasActivities) {
-      _tabs.animateTo(5);
+      _tabs.animateTo(6);
       _snack(
         'Add at least one service, extra, or issue before saving',
         error: true,
@@ -918,7 +923,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       final quantity = double.tryParse((row['quantity'] ?? '').toString());
       final discount = _numberValue(row['discount']);
       if (rate < 0 || quantity == null || quantity <= 0 || discount < 0) {
-        _tabs.animateTo(5);
+        _tabs.animateTo(6);
         _snack(
           'Check rate, quantity, and discount for service ${i + 1}',
           error: true,
@@ -931,7 +936,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       final quantity = double.tryParse((row['quantity'] ?? '').toString());
       final discount = _numberValue(row['discount']);
       if (rate < 0 || quantity == null || quantity <= 0 || discount < 0) {
-        _tabs.animateTo(5);
+        _tabs.animateTo(6);
         _snack(
           'Check rate, quantity, and discount in requested services',
           error: true,
@@ -944,7 +949,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       final quantity = double.tryParse((row['quantity'] ?? '').toString());
       final discount = _numberValue(row['discount']);
       if (rate < 0 || quantity == null || quantity <= 0 || discount < 0) {
-        _tabs.animateTo(4);
+        _tabs.animateTo(5);
         _snack(
           'Check rate, quantity, and discount in accessories',
           error: true,
@@ -957,7 +962,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       final quantity = double.tryParse((row['quantity'] ?? '').toString());
       final discount = _numberValue(row['discount']);
       if (rate < 0 || quantity == null || quantity <= 0 || discount < 0) {
-        _tabs.animateTo(5);
+        _tabs.animateTo(6);
         _snack(
           'Check rate, quantity, and discount in extras and labour',
           error: true,
@@ -966,7 +971,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       }
       if ((row['line_type'] == 'quote_form' || row['line_type'] == 'labour') &&
           (row['name'] ?? '').toString().trim().isEmpty) {
-        _tabs.animateTo(5);
+        _tabs.animateTo(6);
         _snack('Enter a name for each extra and labour charge', error: true);
         return;
       }
@@ -1236,6 +1241,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
             Tab(text: 'Customer Profile'),
             Tab(text: 'Vehicle Details'),
             Tab(text: 'Inspection'),
+            Tab(text: 'Inspection Summary'),
             Tab(text: 'Services & Complaints'),
             Tab(text: 'Accessories'),
             Tab(text: 'Pricing'),
@@ -1264,6 +1270,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
                           _customerTab(),
                           _vehicleTab(),
                           _inspectionTab(),
+                          _inspectionSummaryTab(),
                           _issuesTab(),
                           _accessoriesTab(),
                           _serviceDetailsTab(),
@@ -1843,6 +1850,10 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
       });
       _snack("Added '$serviceName' to Services & Complaints");
     },
+  );
+
+  Widget _inspectionSummaryTab() => InspectionSummaryTabView(
+    controller: _damageInspectionCtrl,
   );
 
   Future<void> _addReportedIssue() async {
@@ -3494,7 +3505,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
                 ),
               ),
               OutlinedButton(
-                onPressed: () => _tabs.animateTo(4),
+                onPressed: () => _tabs.animateTo(5),
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
@@ -4724,14 +4735,14 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
                     ),
                   )
                 : Icon(
-                    _tabs.index == 5
+                    _tabs.index == 6
                         ? Icons.save_outlined
                         : Icons.arrow_forward,
                   ),
             label: Text(
               _saving
                   ? 'Saving'
-                  : _tabs.index == 5
+                  : _tabs.index == 6
                   ? widget.existingQuotation == null
                         ? 'Save Draft'
                         : 'Save Changes'

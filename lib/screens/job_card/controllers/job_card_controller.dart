@@ -48,6 +48,15 @@ class JobCardController extends ChangeNotifier {
   bool get snapshotMode => initialLead != null || existingJobCardId != null;
   bool get hasSavedJobCard => (savedJobCardId ?? existingJobCardId) != null;
 
+  String? get jobNumber {
+    final jn = formData['job_number']?.toString();
+    if (jn != null && jn.isNotEmpty) return jn;
+    if (initialLead != null && initialLead!['job_number'] != null) {
+      return initialLead!['job_number'].toString();
+    }
+    return null;
+  }
+
   JobCardController({
     this.initialCustomer,
     this.initialVehicle,
@@ -58,6 +67,9 @@ class JobCardController extends ChangeNotifier {
 
   void initialize(String? token) {
     savedJobCardId = existingJobCardId;
+    if (initialLead != null && initialLead!['job_number'] != null) {
+      formData['job_number'] = initialLead!['job_number'];
+    }
     customerCtrl.init();
 
     // Hook vehicle changes to trigger vehicle service price loading
@@ -349,7 +361,7 @@ class JobCardController extends ChangeNotifier {
   }
 
   bool validateStageDraft(int tabIndex, {void Function(String message)? onMessage}) {
-    if (tabIndex == 3 &&
+    if ((tabIndex == 3 || tabIndex == 4) &&
         (issuesCtrl.editingReportedIssueIndex != null ||
             issuesCtrl.jobIssueService != null ||
             issuesCtrl.reportedIssueTextController.text.trim().isNotEmpty ||
@@ -358,7 +370,7 @@ class JobCardController extends ChangeNotifier {
       onMessage?.call('Add or finish the current issue first');
       return false;
     }
-    if ((tabIndex == 4 || tabIndex == 5) &&
+    if ((tabIndex >= 4 && tabIndex <= 6) &&
         issuesCtrl.reportedIssues.any(
           (row) => (row['activity_draft'] ?? '').toString().trim().isNotEmpty,
         )) {
@@ -478,6 +490,9 @@ class JobCardController extends ChangeNotifier {
       isSubmitting = false;
       if (res['success'] == true) {
         savedJobCardId = (res['job_card_id'] ?? jobCardId)?.toString();
+        if (res['job_number'] != null && res['job_number'].toString().isNotEmpty) {
+          formData['job_number'] = res['job_number'].toString();
+        }
         notifyListeners();
         return res;
       } else {

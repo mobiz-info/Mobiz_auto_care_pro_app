@@ -415,11 +415,14 @@ class OverviewTabView extends StatelessWidget {
         final labourSubtotal = pricingCtrl.calculateLabourSubtotal(issues);
         final grandTotal = pricingCtrl.calculateGrandEstimatedTotal(issues);
 
-        final jobCardNumber = controller.savedJobCardId != null
-            ? 'JOB #${controller.savedJobCardId}'
-            : (controller.existingJobCardId != null
-                ? 'JOB #${controller.existingJobCardId}'
-                : 'JOB ORDER DRAFT');
+        final realJobNumber = controller.jobNumber;
+        final jobCardNumber = (realJobNumber != null && realJobNumber.isNotEmpty)
+            ? realJobNumber
+            : (controller.savedJobCardId != null
+                ? 'JOB #${controller.savedJobCardId}'
+                : (controller.existingJobCardId != null
+                    ? 'JOB #${controller.existingJobCardId}'
+                    : 'JOB ORDER DRAFT'));
 
         return SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),

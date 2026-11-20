@@ -161,11 +161,14 @@ class _BillingTabViewState extends State<BillingTabView> {
         final billingCtrl = widget.controller.billingCtrl;
         final pricingCtrl = widget.controller.pricingCtrl;
         final issues = widget.controller.issuesCtrl.reportedIssues;
+        final currencySymbol = context.watch<AuthProvider>().currencySymbol.trim();
 
         final issuePricingSubtotal = pricingCtrl.calculateIssuePricingSubtotal(issues);
         final servicesSubtotal = pricingCtrl.calculateServicesSubtotal(issues);
         final labourSubtotal = pricingCtrl.calculateLabourSubtotal(issues);
         final billingTotal = pricingCtrl.calculateBillingTotal(issues);
+        final discountAmount = billingCtrl.calculateDiscount(billingTotal);
+        final effectiveTotal = billingCtrl.calculateEffectiveTotal(billingTotal);
 
         if (billingCtrl.loadingJobCardInvoice) {
           return Center(
@@ -320,7 +323,7 @@ class _BillingTabViewState extends State<BillingTabView> {
         }
 
         if (billingCtrl.billingAmountController.text.isEmpty) {
-          billingCtrl.billingAmountController.text = billingTotal.toStringAsFixed(2);
+          billingCtrl.billingAmountController.text = effectiveTotal.toStringAsFixed(2);
         }
 
         return SingleChildScrollView(
@@ -360,9 +363,91 @@ class _BillingTabViewState extends State<BillingTabView> {
                   const Divider(),
                   overviewAmountLine(
                     context,
-                    'Invoice Total (including item taxes)',
+                    discountAmount > 0 ? 'Subtotal' : 'Invoice Total (including item taxes)',
                     billingTotal,
-                    emphasized: true,
+                    emphasized: discountAmount <= 0,
+                  ),
+                  if (discountAmount > 0) ...[
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4.h),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${context.tr('Discount')} (${billingCtrl.discountType == 'percent' ? '${billingCtrl.discountController.text}%' : currencySymbol})',
+                            style: GoogleFonts.inter(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFFDC2626),
+                            ),
+                          ),
+                          Text(
+                            '- $currencySymbol ${discountAmount.toStringAsFixed(2)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFFDC2626),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(),
+                    overviewAmountLine(
+                      context,
+                      'Net Payable Total',
+                      effectiveTotal,
+                      emphasized: true,
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(height: 14.h),
+              SectionCard(
+                title: context.tr('Invoice Discount'),
+                fields: [
+                  SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(
+                        value: 'amount',
+                        label: Text(context.tr('Amount ($currencySymbol)')),
+                        icon: const Icon(Icons.attach_money, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: 'percent',
+                        label: Text(context.tr('Percentage (%)')),
+                        icon: const Icon(Icons.percent, size: 16),
+                      ),
+                    ],
+                    selected: {billingCtrl.discountType},
+                    onSelectionChanged: (selection) {
+                      billingCtrl.setDiscountType(selection.first, billingTotal);
+                    },
+                  ),
+                  SizedBox(height: 12.h),
+                  TextField(
+                    controller: billingCtrl.discountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: billingCtrl.discountType == 'percent'
+                          ? context.tr('Discount Percentage (%)')
+                          : context.tr('Discount Amount ($currencySymbol)'),
+                      prefixIcon: Icon(
+                        billingCtrl.discountType == 'percent' ? Icons.percent : Icons.discount_outlined,
+                        size: 18.r,
+                      ),
+                      suffixText: billingCtrl.discountType == 'percent' && discountAmount > 0
+                          ? '≈ $currencySymbol ${discountAmount.toStringAsFixed(2)}'
+                          : null,
+                      suffixStyle: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF166534),
+                      ),
+                    ),
+                    onChanged: (_) {
+                      billingCtrl.updateTotals(billingTotal);
+                    },
                   ),
                 ],
               ),
