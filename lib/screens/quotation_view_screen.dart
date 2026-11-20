@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -24,12 +25,14 @@ class QuotationViewScreen extends StatefulWidget {
   final String quotationId;
   final Map<String, dynamic>? initialData;
   final bool jobWorkflow;
+  final bool autoSendWhatsapp;
 
   const QuotationViewScreen({
     super.key,
     required this.quotationId,
     this.initialData,
     this.jobWorkflow = false,
+    this.autoSendWhatsapp = false,
   });
 
   @override
@@ -47,6 +50,8 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
 
   bool _isLoading = true;
   bool _isPipelineActionRunning = false;
+  bool _isUploadingPdf = false;
+  bool _autoWhatsappTriggered = false;
   String _errorMessage = '';
   Map<String, dynamic>? _quotation;
 
@@ -93,6 +98,12 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
     if (widget.initialData != null) {
       _quotation = Map<String, dynamic>.from(widget.initialData!);
       _isLoading = false;
+      if (widget.autoSendWhatsapp && !_autoWhatsappTriggered) {
+        _autoWhatsappTriggered = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _uploadAndSendWhatsApp(sendWhatsapp: true, silent: true);
+        });
+      }
     } else {
       _loadQuotationDetails();
     }
@@ -111,6 +122,12 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
           _quotation = Map<String, dynamic>.from(res['quotation'] as Map);
           _isLoading = false;
         });
+        if (widget.autoSendWhatsapp && !_autoWhatsappTriggered) {
+          _autoWhatsappTriggered = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _uploadAndSendWhatsApp(sendWhatsapp: true, silent: true);
+          });
+        }
       } else {
         setState(() {
           _errorMessage = res['message'] ?? 'Failed to load quotation';
@@ -1989,6 +2006,104 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
     }
   }
 
+  // ── Upload App PDF & Send via WhatsApp ────────────────────────────────────
+  Future<void> _uploadAndSendWhatsApp({
+    bool sendWhatsapp = true,
+    bool silent = false,
+  }) async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null || _quotation == null || _isUploadingPdf) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isUploadingPdf = true);
+
+    BuildContext? dialogContext;
+    if (!silent && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          dialogContext = ctx;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Text(
+                      sendWhatsapp
+                          ? 'Sending Quotation PDF via WhatsApp...'
+                          : 'Uploading PDF...',
+                      style: GoogleFonts.inter(fontSize: 14.sp),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    try {
+      final pdfBytes = await _buildQuotationPdfBytes(context);
+      final res = await ApiService.uploadJobQuotationPdf(
+        widget.quotationId,
+        pdfBytes,
+        token,
+        sendWhatsapp: sendWhatsapp,
+      );
+
+      if (dialogContext != null && Navigator.canPop(dialogContext!)) {
+        Navigator.pop(dialogContext!);
+      }
+
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              sendWhatsapp
+                  ? 'Quotation PDF sent to customer via WhatsApp!'
+                  : 'PDF updated successfully!',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        if (!silent) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(res['message'] ?? 'Failed to send WhatsApp'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (dialogContext != null && Navigator.canPop(dialogContext!)) {
+        Navigator.pop(dialogContext!);
+      }
+      if (!silent && mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingPdf = false);
+    }
+  }
+
   // ── Show Share Options Bottom Sheet ───────────────────────────────────────
   void _showShareOptions(BuildContext context) {
     showModalBottomSheet(
@@ -2012,6 +2127,30 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
                       color: Color(0xFF000080),
                     ),
                   ),
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFF25D366).withOpacity(0.12),
+                    child: SvgPicture.asset(
+                      'assets/icons/wa-whatsapp-icon.svg',
+                      width: 24,
+                      height: 24,
+                    ),
+                  ),
+                  title: Text(
+                    context.tr('Send via WhatsApp (Direct)'),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    context.tr(
+                      'Uploads app PDF and sends to customer via WhatsApp',
+                    ),
+                    style: GoogleFonts.inter(fontSize: 12.sp),
+                  ),
+                  onTap: () {
+                    Navigator.pop(bc);
+                    _uploadAndSendWhatsApp(sendWhatsapp: true, silent: false);
+                  },
                 ),
                 ListTile(
                   leading: CircleAvatar(

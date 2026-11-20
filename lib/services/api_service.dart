@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -3238,6 +3239,40 @@ class ApiService {
       },
     );
     return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> uploadJobQuotationPdf(
+    String id,
+    Uint8List pdfBytes,
+    String token, {
+    bool sendWhatsapp = false,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/job-quotations/$id/upload-pdf/');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer $token';
+      if (sendWhatsapp) {
+        request.fields['send_whatsapp'] = 'true';
+      }
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'pdf',
+          pdfBytes,
+          filename: 'quotation-$id.pdf',
+        ),
+      );
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {
+        'success': false,
+        'message': 'Upload failed (${response.statusCode}): ${response.body}',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Upload error: $e'};
+    }
   }
 
   // --- Senior ERP Purchase & Supplier Payables ---

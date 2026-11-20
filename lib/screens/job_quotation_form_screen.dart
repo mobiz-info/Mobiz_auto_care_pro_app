@@ -1173,7 +1173,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
                   .toList(),
             )
           : await ApiService.createJobQuotation(
-              payload,
+              {...payload, 'skip_whatsapp': true},
               token,
               issuePhotos: _reportedIssues
                   .map((row) => List<XFile>.from(row['photos'] as List))
@@ -1191,6 +1191,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
             builder: (_) => QuotationViewScreen(
               quotationId: result['quotation_id'].toString(),
               jobWorkflow: true,
+              autoSendWhatsapp: true,
             ),
           ),
         );
