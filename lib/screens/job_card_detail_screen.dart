@@ -1019,6 +1019,9 @@ class _JobCardDetailScreenState extends State<JobCardDetailScreen> {
                 const SizedBox(height: 14),
               ],
 
+              // ── Quality Check Section ─────────────────────────────────────
+              _buildQualityCheckSection(jc),
+
               // ── Accessories & Parts Table ───────────────────────────────────
               if (parts.isNotEmpty) ...[
                 _buildSectionContainer(
@@ -1123,6 +1126,136 @@ class _JobCardDetailScreenState extends State<JobCardDetailScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildQualityCheckSection(Map<String, dynamic> jc) {
+    final rawQcs = jc['quality_checks'] as List? ?? [];
+    if (rawQcs.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        _buildSectionContainer(
+          title: context.tr('Quality Inspection Check'),
+          icon: Icons.verified_outlined,
+          child: Column(
+            children: rawQcs.map((item) {
+              final isSatisfied = item['status'] == 'satisfied';
+              final serviceName = item['service_name']?.toString() ?? '';
+              final remarks = item['remarks']?.toString() ?? '';
+              final photos = (item['photos'] as List? ?? []);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isSatisfied ? const Color(0xFFF8FAFC) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSatisfied ? const Color(0xFFE2E8F0) : const Color(0xFFFCA5A5),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            serviceName,
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isSatisfied ? const Color(0xFFD1FAE5) : const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSatisfied ? Icons.check_circle : Icons.cancel,
+                                size: 12,
+                                color: isSatisfied ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isSatisfied ? context.tr('Satisfied') : context.tr('Not Satisfied'),
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSatisfied ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (remarks.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        remarks,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: const Color(0xFF475569),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                    if (photos.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: photos.map((p) {
+                          final url = p['url']?.toString() ?? '';
+                          return GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                barrierColor: Colors.black87,
+                                builder: (_) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  child: InteractiveViewer(
+                                    child: Image.network(url, fit: BoxFit.contain),
+                                  ),
+                                ),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.network(
+                                url,
+                                width: 55,
+                                height: 55,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 55,
+                                  height: 55,
+                                  color: const Color(0xFFE2E8F0),
+                                  child: const Icon(Icons.broken_image, size: 20),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
     );
   }
 

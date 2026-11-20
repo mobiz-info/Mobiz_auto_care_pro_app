@@ -3603,10 +3603,12 @@ class ApiService {
     List<List<XFile>> issuePhotos = const [],
     List<XFile> beforePhotos = const [],
     List<XFile> afterPhotos = const [],
+    Map<int, List<XFile>> qualityCheckPhotos = const {},
   }) async {
     final hasIssuePhotos = issuePhotos.any((photos) => photos.isNotEmpty);
     final hasVehiclePhotos = beforePhotos.isNotEmpty || afterPhotos.isNotEmpty;
-    if (hasIssuePhotos || hasVehiclePhotos) {
+    final hasQcPhotos = qualityCheckPhotos.values.any((photos) => photos.isNotEmpty);
+    if (hasIssuePhotos || hasVehiclePhotos || hasQcPhotos) {
       final photoBytes = <(XFile, List<int>)>[];
       var totalPhotoBytes = 0;
       for (final photos in issuePhotos) {
@@ -3625,6 +3627,13 @@ class ApiService {
         final bytes = await photo.readAsBytes();
         totalPhotoBytes += bytes.length;
         photoBytes.add((photo, bytes));
+      }
+      for (final photos in qualityCheckPhotos.values) {
+        for (final photo in photos) {
+          final bytes = await photo.readAsBytes();
+          totalPhotoBytes += bytes.length;
+          photoBytes.add((photo, bytes));
+        }
       }
       if (totalPhotoBytes > 15 * 1024 * 1024) {
         return {
@@ -3671,6 +3680,19 @@ class ApiService {
           ),
         );
       }
+      for (final entry in qualityCheckPhotos.entries) {
+        final qcIdx = entry.key;
+        for (final photo in entry.value) {
+          final bytes = photoBytes[photoIndex++].$2;
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'qc_photos_$qcIdx',
+              bytes,
+              filename: photo.name,
+            ),
+          );
+        }
+      }
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
       return _decodeJobCardResponse(response);
@@ -3694,10 +3716,12 @@ class ApiService {
     List<List<XFile>> issuePhotos = const [],
     List<XFile> beforePhotos = const [],
     List<XFile> afterPhotos = const [],
+    Map<int, List<XFile>> qualityCheckPhotos = const {},
   }) async {
     final hasIssuePhotos = issuePhotos.any((photos) => photos.isNotEmpty);
     final hasVehiclePhotos = beforePhotos.isNotEmpty || afterPhotos.isNotEmpty;
-    if (hasIssuePhotos || hasVehiclePhotos) {
+    final hasQcPhotos = qualityCheckPhotos.values.any((photos) => photos.isNotEmpty);
+    if (hasIssuePhotos || hasVehiclePhotos || hasQcPhotos) {
       final photoBytes = <(XFile, List<int>)>[];
       var totalPhotoBytes = 0;
       for (final photos in issuePhotos) {
@@ -3716,6 +3740,13 @@ class ApiService {
         final bytes = await photo.readAsBytes();
         totalPhotoBytes += bytes.length;
         photoBytes.add((photo, bytes));
+      }
+      for (final photos in qualityCheckPhotos.values) {
+        for (final photo in photos) {
+          final bytes = await photo.readAsBytes();
+          totalPhotoBytes += bytes.length;
+          photoBytes.add((photo, bytes));
+        }
       }
       if (totalPhotoBytes > 15 * 1024 * 1024) {
         return {
@@ -3762,6 +3793,19 @@ class ApiService {
           ),
         );
       }
+      for (final entry in qualityCheckPhotos.entries) {
+        final qcIdx = entry.key;
+        for (final photo in entry.value) {
+          final bytes = photoBytes[photoIndex++].$2;
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'qc_photos_$qcIdx',
+              bytes,
+              filename: photo.name,
+            ),
+          );
+        }
+      }
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
       return _decodeJobCardResponse(response);
@@ -3801,6 +3845,47 @@ class ApiService {
     return _decodeJobCardResponse(response);
   }
 
+
+  static Future<Map<String, dynamic>> uploadJobCardQualityCheckPhoto({
+    required String jobCardId,
+    required XFile photo,
+    required String serviceName,
+    required String token,
+    String? status,
+    String? remarks,
+  }) async {
+    final url = Uri.parse('$baseUrl/job-cards/$jobCardId/quality-checks/');
+    final request = http.MultipartRequest('POST', url)
+      ..headers['Authorization'] = 'Bearer $token'
+      ..fields['service_name'] = serviceName
+      ..fields['status'] = status ?? 'satisfied';
+    if (remarks != null && remarks.isNotEmpty) {
+      request.fields['remarks'] = remarks;
+    }
+    final bytes = await photo.readAsBytes();
+    request.files.add(
+      http.MultipartFile.fromBytes('qc_photos_0', bytes, filename: photo.name),
+    );
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    return _decodeJobCardResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteJobCardQualityCheckPhoto({
+    required String jobCardId,
+    required String photoId,
+    required String token,
+  }) async {
+    final url = Uri.parse('$baseUrl/job-cards/$jobCardId/quality-checks/photos/$photoId/');
+    final response = await http.delete(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    return _decodeJobCardResponse(response);
+  }
   static Future<Map<String, dynamic>> deleteJobCardVehiclePhoto({
     required String jobCardId,
     required String photoId,

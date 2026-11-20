@@ -1,3 +1,4 @@
+import 'widgets/quality_check/quality_check_tab_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -62,14 +63,14 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     );
 
     _formTabs = TabController(
-      length: 10,
-      initialIndex: widget.initialTabIndex.clamp(0, 9),
+      length: 11,
+      initialIndex: widget.initialTabIndex.clamp(0, 10),
       vsync: this,
     );
 
     _formTabs.addListener(() {
       if (mounted) setState(() {});
-      if (_formTabs.index == 9) {
+      if (_formTabs.index == 10) {
         final token = context.read<AuthProvider>().token;
         if (token != null) {
           _controller.billingCtrl.loadJobCardInvoice(
@@ -94,7 +95,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
   }
 
   Future<void> _saveStageAndExit() async {
-    if (_formTabs.index < 4 || _formTabs.index > 7) return;
+    if (_formTabs.index < 4 || _formTabs.index > 8) return;
     if (!_controller.validateStageDraft(_formTabs.index, onMessage: (msg) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(msg))),
@@ -253,7 +254,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 6: Job Progress -> Pricing (Tab 7)
+    // Tab 6: Job Progress -> Quality Check (Tab 7)
     if (_formTabs.index == 6) {
       if (!_controller.validateStageDraft(6, onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -279,7 +280,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 7: Pricing -> Overview (Tab 8)
+    // Tab 7: Quality Check -> Pricing (Tab 8)
     if (_formTabs.index == 7) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
@@ -297,9 +298,27 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 8: Overview -> Billing (Tab 9)
+    // Tab 8: Pricing -> Overview (Tab 9)
     if (_formTabs.index == 8) {
-      _formTabs.index = 9;
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return;
+      final res = await _controller.submitJobCard(
+        token: token,
+        keepOpen: true,
+        onMessage: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr(msg))),
+          );
+        },
+      );
+      if (res['success'] == true && mounted) {
+        _formTabs.index = 9;
+      }
+      return;
+    }
+    // Tab 9: Overview -> Billing (Tab 10)
+    if (_formTabs.index == 9) {
+      _formTabs.index = 10;
       return;
     }
     if (_controller.billingCtrl.jobCardInvoice != null) {
@@ -401,6 +420,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                 Tab(text: context.tr('Services & Complaints')),
                 Tab(text: context.tr('Accessories')),
                 Tab(text: context.tr('Job Progress')),
+                Tab(text: context.tr('Quality Check')),
                 Tab(text: context.tr('Pricing')),
                 Tab(text: context.tr('Overview')),
                 Tab(text: context.tr('Billing (Invoice)')),
@@ -497,6 +517,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                       ]),
                       AccessoriesTabView(controller: _controller.pricingCtrl),
                       JobProgressTabView(controller: _controller),
+                      QualityCheckTabView(controller: _controller, token: context.read<AuthProvider>().token),
                       PricingTabView(controller: _controller),
                       OverviewTabView(controller: _controller),
                       BillingTabView(controller: _controller),

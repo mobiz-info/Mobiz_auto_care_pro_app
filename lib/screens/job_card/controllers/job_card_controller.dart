@@ -1,3 +1,4 @@
+import '../models/job_card_quality_check_model.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -48,6 +49,107 @@ class JobCardController extends ChangeNotifier {
   List<Map<String, dynamic>> existingBeforePhotos = [];
   List<Map<String, dynamic>> existingAfterPhotos = [];
   List<String> deletePhotoIds = [];
+
+  final Map<String, JobCardQualityCheckItem> qualityChecks = {};
+
+  List<JobCardQualityCheckItem> get qualityCheckList {
+    _syncQualityChecksWithServices();
+    return qualityChecks.values.toList();
+  }
+
+  void _syncQualityChecksWithServices() {
+    final services = pricingCtrl.addedServices;
+    for (final s in services) {
+      final name = (s['name'] ?? s['service_name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (!qualityChecks.containsKey(name)) {
+        qualityChecks[name] = JobCardQualityCheckItem(
+          serviceName: name,
+          serviceId: (s['id'] ?? s['service_id'])?.toString(),
+          status: 'satisfied',
+          remarks: '',
+        );
+      } else {
+        final existing = qualityChecks[name]!;
+        if (existing.serviceId == null || existing.serviceId!.isEmpty) {
+          existing.serviceId = (s['id'] ?? s['service_id'])?.toString();
+        }
+      }
+    }
+    for (final issue in issuesCtrl.reportedIssues) {
+      final issueName = (issue['issue_text'] ?? issue['issue']?['name'] ?? '').toString().trim();
+      if (issueName.isEmpty) continue;
+      if (!qualityChecks.containsKey(issueName)) {
+        qualityChecks[issueName] = JobCardQualityCheckItem(
+          serviceName: issueName,
+          status: 'satisfied',
+          remarks: '',
+        );
+      }
+    }
+  }
+
+  void setQualityCheckStatus(String serviceName, String status) {
+    _syncQualityChecksWithServices();
+    if (qualityChecks.containsKey(serviceName)) {
+      qualityChecks[serviceName]!.status = status;
+      notifyListeners();
+    }
+  }
+
+  void setQualityCheckRemarks(String serviceName, String remarks) {
+    _syncQualityChecksWithServices();
+    if (qualityChecks.containsKey(serviceName)) {
+      qualityChecks[serviceName]!.remarks = remarks;
+      notifyListeners();
+    }
+  }
+
+  void addQualityCheckPhoto(String serviceName, XFile photo) {
+    _syncQualityChecksWithServices();
+    if (qualityChecks.containsKey(serviceName)) {
+      qualityChecks[serviceName]!.newPhotos.add(photo);
+      notifyListeners();
+    }
+  }
+
+  void removeQualityCheckNewPhoto(String serviceName, int index) {
+    if (qualityChecks.containsKey(serviceName)) {
+      final item = qualityChecks[serviceName]!;
+      if (index >= 0 && index < item.newPhotos.length) {
+        item.newPhotos.removeAt(index);
+        notifyListeners();
+      }
+    }
+  }
+
+  void removeQualityCheckExistingPhoto(String serviceName, String photoId) {
+    if (qualityChecks.containsKey(serviceName)) {
+      final item = qualityChecks[serviceName]!;
+      item.existingPhotos.removeWhere((p) => p['id']?.toString() == photoId);
+      item.deletedPhotoIds.add(photoId);
+      notifyListeners();
+    }
+  }
+
+  List<Map<String, dynamic>> getQualityChecksPayload() {
+    _syncQualityChecksWithServices();
+    return qualityChecks.values.map((item) => item.toPayload()).toList();
+  }
+
+  Map<int, List<XFile>> getQualityCheckPhotoUploads() {
+    _syncQualityChecksWithServices();
+    final uploads = <int, List<XFile>>{};
+    var idx = 0;
+    for (final item in qualityChecks.values) {
+      if (item.newPhotos.isNotEmpty) {
+        uploads[idx] = List.from(item.newPhotos);
+      }
+      idx++;
+    }
+    return uploads;
+  }
+
 
   void addBeforePhotos(List<XFile> photos) {
     beforePhotos.addAll(photos);
@@ -405,6 +507,16 @@ class JobCardController extends ChangeNotifier {
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
 
+    final rawQcs = data['quality_checks'] as List? ?? [];
+    for (final q in rawQcs) {
+      if (q is Map) {
+        final qcItem = JobCardQualityCheckItem.fromJson(Map<String, dynamic>.from(q));
+        if (qcItem.serviceName.isNotEmpty) {
+          qualityChecks[qcItem.serviceName] = qcItem;
+        }
+      }
+    }
+    _syncQualityChecksWithServices();
     pricingCtrl.loadExistingJobCard(data);
     notifyListeners();
   }
@@ -506,7 +618,9 @@ class JobCardController extends ChangeNotifier {
       'labour': pricingCtrl.getLabourPayload(),
       'extras': pricingCtrl.getExtrasPayload(),
       'reported_issues': issuesCtrl.getReportedIssuesPayload(),
+      'quality_checks': getQualityChecksPayload(),
     };
+    final qcPhotoUploads = getQualityCheckPhotoUploads();
     if (statusOverride != null) payload['status'] = statusOverride;
     final issuePhotoUploads = issuesCtrl.getIssuePhotoUploads();
 
@@ -535,6 +649,7 @@ class JobCardController extends ChangeNotifier {
               issuePhotos: issuePhotoUploads,
               beforePhotos: beforePhotos,
               afterPhotos: afterPhotos,
+              qualityCheckPhotos: qcPhotoUploads,
             )
           : await JobCardService.createJobCard(
               payload,
@@ -542,6 +657,7 @@ class JobCardController extends ChangeNotifier {
               issuePhotos: issuePhotoUploads,
               beforePhotos: beforePhotos,
               afterPhotos: afterPhotos,
+              qualityCheckPhotos: qcPhotoUploads,
             );
 
       isSubmitting = false;

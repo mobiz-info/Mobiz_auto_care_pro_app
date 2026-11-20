@@ -31,7 +31,7 @@ class JobCardFooter extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             if (formTabs.index > 0)
-              formTabs.index >= 4 && formTabs.index <= 7
+              formTabs.index >= 4 && formTabs.index <= 8
                   ? IconButton(
                       tooltip: context.tr('Back'),
                       onPressed: () => formTabs.index = formTabs.index - 1,
@@ -55,7 +55,7 @@ class JobCardFooter extends StatelessWidget {
                     )
             else
               const SizedBox.shrink(),
-            if (formTabs.index >= 4 && formTabs.index <= 7)
+            if (formTabs.index >= 4 && formTabs.index <= 8)
               TextButton.icon(
                 onPressed: isBusy ? null : onSaveStageAndExit,
                 icon: Icon(Icons.save_outlined, size: 16.sp),
@@ -80,11 +80,11 @@ class JobCardFooter extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        formTabs.index == 9
+                        formTabs.index == 10
                             ? (billingCtrl.jobCardInvoice == null
                                 ? Icons.receipt_long_outlined
                                 : Icons.done)
-                            : formTabs.index >= 4 && formTabs.index <= 7
+                            : formTabs.index >= 4 && formTabs.index <= 8
                                 ? Icons.save_outlined
                                 : Icons.arrow_forward,
                         size: 16.sp,
@@ -92,25 +92,27 @@ class JobCardFooter extends StatelessWidget {
                 label: Text(
                   isBusy
                       ? context.tr('Saving...')
-                      : formTabs.index == 9
+                      : formTabs.index == 10
                           ? billingCtrl.jobCardInvoice == null
                               ? context.tr('Create Invoice')
                               : context.tr('Done')
-                          : formTabs.index == 8
+                          : formTabs.index == 9
                               ? context.tr('Proceed to Billing')
-                              : formTabs.index == 7
+                              : formTabs.index == 8
                                   ? context.tr('Save & Overview')
-                                  : formTabs.index == 6
+                                  : formTabs.index == 7
                                       ? context.tr('Save & Pricing')
-                                      : formTabs.index == 5
-                                          ? context.tr('Save & Progress')
-                                          : formTabs.index == 4
-                                              ? context.tr('Save & Accessories')
-                                              : formTabs.index == 3
-                                                  ? context.tr('Continue to Services')
-                                                  : formTabs.index == 2
-                                                      ? context.tr('View Summary')
-                                                      : context.tr('Continue'),
+                                      : formTabs.index == 6
+                                          ? context.tr('Save & Quality Check')
+                                          : formTabs.index == 5
+                                              ? context.tr('Save & Progress')
+                                              : formTabs.index == 4
+                                                  ? context.tr('Save & Accessories')
+                                                  : formTabs.index == 3
+                                                      ? context.tr('Continue to Services')
+                                                      : formTabs.index == 2
+                                                          ? context.tr('View Summary')
+                                                          : context.tr('Continue'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(

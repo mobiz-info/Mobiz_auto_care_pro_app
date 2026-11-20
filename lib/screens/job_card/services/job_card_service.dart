@@ -60,6 +60,7 @@ class JobCardService {
     List<List<XFile>>? issuePhotos,
     List<XFile>? beforePhotos,
     List<XFile>? afterPhotos,
+    Map<int, List<XFile>>? qualityCheckPhotos,
   }) {
     return ApiService.createJobCard(
       payload,
@@ -67,6 +68,7 @@ class JobCardService {
       issuePhotos: issuePhotos ?? const [],
       beforePhotos: beforePhotos ?? const [],
       afterPhotos: afterPhotos ?? const [],
+      qualityCheckPhotos: qualityCheckPhotos ?? const {},
     );
   }
 
@@ -77,6 +79,7 @@ class JobCardService {
     List<List<XFile>>? issuePhotos,
     List<XFile>? beforePhotos,
     List<XFile>? afterPhotos,
+    Map<int, List<XFile>>? qualityCheckPhotos,
   }) {
     return ApiService.updateJobCard(
       jobCardId,
@@ -85,6 +88,37 @@ class JobCardService {
       issuePhotos: issuePhotos ?? const [],
       beforePhotos: beforePhotos ?? const [],
       afterPhotos: afterPhotos ?? const [],
+      qualityCheckPhotos: qualityCheckPhotos ?? const {},
+    );
+  }
+
+  static Future<Map<String, dynamic>> uploadJobCardQualityCheckPhoto({
+    required String jobCardId,
+    required XFile photo,
+    required String serviceName,
+    required String token,
+    String? status,
+    String? remarks,
+  }) {
+    return ApiService.uploadJobCardQualityCheckPhoto(
+      jobCardId: jobCardId,
+      photo: photo,
+      serviceName: serviceName,
+      token: token,
+      status: status,
+      remarks: remarks,
+    );
+  }
+
+  static Future<Map<String, dynamic>> deleteJobCardQualityCheckPhoto({
+    required String jobCardId,
+    required String photoId,
+    required String token,
+  }) {
+    return ApiService.deleteJobCardQualityCheckPhoto(
+      jobCardId: jobCardId,
+      photoId: photoId,
+      token: token,
     );
   }
 
