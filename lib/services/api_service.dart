@@ -17,7 +17,7 @@ class ApiService {
       return {
         'success': false,
         'message':
-            'The Job Card upload is too large. Reduce the number or size of issue photos and try again.',
+            'The upload file size is too large. Please reduce the photo size and try again.',
       };
     }
     try {

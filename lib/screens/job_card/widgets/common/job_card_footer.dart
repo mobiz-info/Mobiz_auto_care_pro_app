@@ -55,7 +55,7 @@ class JobCardFooter extends StatelessWidget {
                     )
             else
               const SizedBox.shrink(),
-            if (formTabs.index >= 4 && formTabs.index <= 8)
+            if (formTabs.index >= 4 && formTabs.index <= 9)
               TextButton.icon(
                 onPressed: isBusy ? null : onSaveStageAndExit,
                 icon: Icon(Icons.save_outlined, size: 16.sp),
@@ -98,21 +98,13 @@ class JobCardFooter extends StatelessWidget {
                               : context.tr('Done')
                           : formTabs.index == 9
                               ? context.tr('Proceed to Billing')
-                              : formTabs.index == 8
-                                  ? context.tr('Save & Overview')
-                                  : formTabs.index == 7
-                                      ? context.tr('Save & Pricing')
-                                      : formTabs.index == 6
-                                          ? context.tr('Save & Quality Check')
-                                          : formTabs.index == 5
-                                              ? context.tr('Save & Progress')
-                                              : formTabs.index == 4
-                                                  ? context.tr('Save & Accessories')
-                                                  : formTabs.index == 3
-                                                      ? context.tr('Continue to Services')
-                                                      : formTabs.index == 2
-                                                          ? context.tr('View Summary')
-                                                          : context.tr('Continue'),
+                              : formTabs.index >= 4 && formTabs.index <= 8
+                                  ? context.tr('Save & Continue')
+                                  : formTabs.index == 3
+                                      ? context.tr('Continue to Services')
+                                      : formTabs.index == 2
+                                          ? context.tr('View Summary')
+                                          : context.tr('Continue'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(

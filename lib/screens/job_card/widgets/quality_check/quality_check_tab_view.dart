@@ -34,6 +34,8 @@ class _QualityCheckTabViewState extends State<QualityCheckTabView> {
       if (source == ImageSource.camera) {
         final XFile? file = await _picker.pickImage(
           source: ImageSource.camera,
+          maxWidth: 1600,
+          maxHeight: 1600,
           imageQuality: 80,
         );
         if (file != null) {
@@ -41,6 +43,8 @@ class _QualityCheckTabViewState extends State<QualityCheckTabView> {
         }
       } else {
         final List<XFile> files = await _picker.pickMultiImage(
+          maxWidth: 1600,
+          maxHeight: 1600,
           imageQuality: 80,
         );
         for (final f in files) {
