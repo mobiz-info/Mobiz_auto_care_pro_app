@@ -532,7 +532,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       TextEditingController(text: '0');
 
   // Payment mode selection state
-  String _selectedPaymentMode = 'digital_payments';
+  String _selectedPaymentMode =
+      CountryConfig.isUAE ? 'cash' : 'digital_payments';
 
   // Sales type (Cash = show payment mode, Credit = hide payment mode)
   String _selectedSalesType = 'cash';
@@ -683,6 +684,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   @override
   void initState() {
     super.initState();
+    if (CountryConfig.isUAE && _selectedPaymentMode == 'digital_payments') {
+      _selectedPaymentMode = 'cash';
+    }
     _additionalDiscountController.addListener(() {
       _syncAmountCollected();
       _updateUi();
@@ -5681,11 +5685,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _paymentModeOption(
-                'digital_payments',
-                'Digital payments',
-                Icons.qr_code_scanner,
-              ),
+              if (!CountryConfig.isUAE)
+                _paymentModeOption(
+                  'digital_payments',
+                  'Digital payments',
+                  Icons.qr_code_scanner,
+                ),
               _paymentModeOption('cash', 'Cash', Icons.money),
               _paymentModeOption('card', 'Card', Icons.credit_card),
             ],
