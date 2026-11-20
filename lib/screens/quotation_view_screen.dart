@@ -18,6 +18,7 @@ import '../services/api_service.dart';
 import 'job_card_detail_screen.dart';
 import 'job_card_create_screen.dart';
 import 'quotation_create_screen.dart';
+import 'job_quotation_form_screen.dart';
 
 class QuotationViewScreen extends StatefulWidget {
   final String quotationId;
@@ -204,9 +205,65 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
     }
   }
 
+  Future<void> _editQuotation() async {
+    final q = _quotation;
+    if (q == null) return;
+    final updated = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => widget.jobWorkflow
+            ? JobQuotationFormScreen(
+                lead: q['lead'] is Map
+                    ? Map<String, dynamic>.from(q['lead'] as Map)
+                    : null,
+                existingQuotation: q,
+              )
+            : QuotationCreateScreen(
+                customer: {
+                  'id': q['customer_id'],
+                  'name': q['customer_name'],
+                  'phone': q['customer_phone'],
+                  'type': q['customer_type'],
+                },
+                vehicle: {
+                  'id': q['vehicle_id'],
+                  'no': q['vehicle_number'],
+                  'type': q['vehicle_type'],
+                },
+                existingQuotation: q,
+                leadId: q['lead_id']?.toString(),
+                jobWorkflow: widget.jobWorkflow,
+              ),
+      ),
+    );
+    if (updated == true && mounted) {
+      await _loadQuotationDetails();
+    }
+  }
+
   Future<void> _reviseQuotation() async {
     final q = _quotation;
     if (q == null) return;
+    if (widget.jobWorkflow) {
+      final updated = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => JobQuotationFormScreen(
+            lead: q['lead'] is Map
+                ? Map<String, dynamic>.from(q['lead'] as Map)
+                : null,
+            existingQuotation: {
+              ...q,
+              'revision_of_id': q['id'],
+            },
+          ),
+        ),
+      );
+      if (updated == true && mounted) {
+        await _loadQuotationDetails();
+      }
+      return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -2074,6 +2131,14 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          if (_quotation != null &&
+              _quotation!['is_accepted'] != true &&
+              (_quotation!['job_card_id'] ?? '').toString().isEmpty)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: Colors.white),
+              tooltip: context.tr('Edit quotation'),
+              onPressed: _isPipelineActionRunning ? null : _editQuotation,
+            ),
           if (_quotation != null &&
               _hasPricedItems &&
               (_quotation!['job_card_id'] ?? '').toString().isEmpty)
