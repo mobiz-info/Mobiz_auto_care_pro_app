@@ -16,6 +16,9 @@ import '../providers/auth_provider.dart';
 import '../providers/invoice_provider.dart';
 import '../config/country_config.dart';
 import '../services/api_service.dart';
+import '../services/bluetooth_printer_service.dart';
+import '../utils/thermal_receipt_generator.dart';
+import 'bluetooth_printer_screen.dart';
 import 'invoice_create_screen.dart';
 import 'package:http/http.dart' as http;
 
@@ -889,6 +892,234 @@ class _BillsScreenState extends State<BillsScreen> {
   }
 
   Future<void> _printInvoice(BuildContext context, Map<String, dynamic> inv) async {
+    final btService = BluetoothPrinterService();
+    if (btService.autoPrint && btService.isConnected) {
+      await _printThermalReceipt(context, inv);
+      return;
+    }
+    _showPrintOptionsSheet(context, inv);
+  }
+
+  void _showPrintOptionsSheet(BuildContext context, Map<String, dynamic> inv) {
+    final btService = BluetoothPrinterService();
+    final isConnected = btService.isConnected;
+    final printerName = btService.connectedName ?? 'Bluetooth Printer';
+    final paperSize = btService.paperSize == '4inch' ? '4 Inch (100mm)' : '3 Inch (80mm)';
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext bc) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        bc.tr('Print Invoice'),
+                        style: GoogleFonts.inter(
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF000080),
+                        ),
+                      ),
+                      Text(
+                        inv['invoice_number']?.toString() ?? '',
+                        style: GoogleFonts.inter(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // ── Option 1: Thermal Print (Bluetooth) ─────────────
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isConnected ? Colors.green.shade50 : const Color(0xFFEFF6FF),
+                    child: Icon(
+                      Icons.print,
+                      color: isConnected ? Colors.green.shade700 : const Color(0xFF000080),
+                    ),
+                  ),
+                  title: Text(
+                    bc.tr('Thermal Print (Bluetooth)'),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    isConnected
+                        ? '$printerName • $paperSize'
+                        : bc.tr('Tap to connect Bluetooth printer (3" / 4")'),
+                    style: GoogleFonts.inter(
+                      fontSize: 12.sp,
+                      color: isConnected ? Colors.green.shade700 : Colors.grey.shade600,
+                    ),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                  onTap: () {
+                    Navigator.pop(bc);
+                    if (isConnected) {
+                      _printThermalReceipt(context, inv);
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BluetoothPrinterScreen()),
+                      );
+                    }
+                  },
+                ),
+
+                // ── Option 2: Standard A4 / PDF Print ─────────────────
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.purple.shade50,
+                    child: Icon(Icons.picture_as_pdf_outlined, color: Colors.purple.shade700),
+                  ),
+                  title: Text(
+                    bc.tr('Standard A4 / PDF Print'),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    bc.tr('System print preview / Save as PDF'),
+                    style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                  onTap: () {
+                    Navigator.pop(bc);
+                    _printStandardPdf(context, inv);
+                  },
+                ),
+
+                // ── Option 3: Printer Setup ──────────────────────────
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.grey.shade100,
+                    child: Icon(Icons.settings_bluetooth, color: Colors.grey.shade700),
+                  ),
+                  title: Text(
+                    bc.tr('Bluetooth Printer Setup'),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    bc.tr('Configure 3" / 4" paper size & paired printers'),
+                    style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                  onTap: () {
+                    Navigator.pop(bc);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const BluetoothPrinterScreen()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _printThermalReceipt(BuildContext context, Map<String, dynamic> inv) async {
+    final btService = BluetoothPrinterService();
+    try {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Text(context.tr('Printing to Bluetooth thermal printer...')),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      final companyName = context.read<AuthProvider>().companyName ?? 'Mobiz Autocare Pro';
+      final currency = currencySymbol(context);
+
+      final bytes = await ThermalReceiptGenerator.generateBillReceipt(
+        inv: inv,
+        paperSize: btService.paperSize,
+        companyName: companyName,
+        currency: currency,
+      );
+
+      final success = await btService.printBytes(bytes);
+
+      if (context.mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${context.tr('Bill printed successfully on')} ${btService.connectedName ?? 'printer'} (${btService.paperSize == '4inch' ? '4"' : '3"'})',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.tr('Failed to print bill. Please check printer connection.')),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: context.tr('Setup'),
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BluetoothPrinterScreen()),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${context.tr('Thermal print error')}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _printStandardPdf(BuildContext context, Map<String, dynamic> inv) async {
     try {
       final pdfBytes = await _getInvoicePdfBytes(context, inv);
       await Printing.layoutPdf(
@@ -959,7 +1190,17 @@ class _BillsScreenState extends State<BillsScreen> {
             elevation: 0,
             actions: [
               IconButton(
-                  icon: Icon(Icons.refresh),
+                icon: const Icon(Icons.print_outlined),
+                tooltip: context.tr('Bluetooth Printer Setup'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BluetoothPrinterScreen()),
+                  );
+                },
+              ),
+              IconButton(
+                  icon: const Icon(Icons.refresh),
                   onPressed: () => _fetchInvoices(context)),
             ],
           ),

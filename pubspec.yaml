@@ -50,6 +50,8 @@ dependencies:
   intl_phone_field: ^3.2.0
   image_picker: ^1.2.1
   flutter_svg: ^2.0.17
+  print_bluetooth_thermal: ^1.2.1
+  esc_pos_utils_plus: ^2.0.4
 
 dev_dependencies:
   flutter_test:

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import 'bills_screen.dart';
+import 'bluetooth_printer_screen.dart';
 import 'book_now_screen.dart';
 import 'bookings_list_screen.dart';
 import 'collection_screen.dart';
@@ -616,6 +617,13 @@ class _MenuScreenState extends State<MenuScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => BillsScreen()),
+                        );
+                      }),
+                      _drawerItem(Icons.print_outlined, 'Printer Setup', () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const BluetoothPrinterScreen()),
                         );
                       }),
                     ],

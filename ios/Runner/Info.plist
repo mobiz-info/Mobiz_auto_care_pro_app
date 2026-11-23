@@ -28,6 +28,10 @@
 	<string>Take photos of reported vehicle issues for the quotation.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select photos of reported vehicle issues for the quotation.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app requires Bluetooth access to connect to your thermal receipt printer.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app requires Bluetooth access to connect to your thermal receipt printer.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
