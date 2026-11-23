@@ -9,8 +9,15 @@ class ThermalReceiptGenerator {
     try {
       Uint8List? imageBytes;
       if (logoUrl != null && logoUrl.isNotEmpty) {
+        String fullUrl = logoUrl;
+        if (!fullUrl.startsWith('http')) {
+          if (!fullUrl.startsWith('/')) fullUrl = '/$fullUrl';
+          fullUrl = 'http://68.183.94.11:78$fullUrl';
+        } else if (fullUrl.contains('68.183.94.11') && !fullUrl.contains(':78')) {
+          fullUrl = fullUrl.replaceFirst('68.183.94.11', '68.183.94.11:78');
+        }
         try {
-          final res = await http.get(Uri.parse(logoUrl)).timeout(const Duration(seconds: 2));
+          final res = await http.get(Uri.parse(fullUrl)).timeout(const Duration(seconds: 4));
           if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
             imageBytes = res.bodyBytes;
           }
@@ -102,37 +109,29 @@ class ThermalReceiptGenerator {
     final String invoiceTitle = taxAmount > 0 ? 'TAX INVOICE' : 'CASH INVOICE';
     final String invoiceNumber = (inv['invoice_number'] ?? 'N/A').toString();
 
-    if (is2Inch) {
-      bytes += generator.text(invoiceTitle, styles: const PosStyles(bold: true));
-      bytes += generator.text('# $invoiceNumber', styles: const PosStyles(bold: true));
-      for (final line in addressLines) {
-        bytes += generator.text(line, styles: const PosStyles(align: PosAlign.right));
-      }
-    } else {
-      final String line0 = addressLines.isNotEmpty ? addressLines[0] : '';
-      final String line1 = addressLines.length > 1 ? addressLines[1] : '';
-      final String line2 = addressLines.length > 2 ? addressLines[2] : '';
+    final String line0 = addressLines.isNotEmpty ? addressLines[0] : '';
+    final String line1 = addressLines.length > 1 ? addressLines[1] : '';
+    final String line2 = addressLines.length > 2 ? addressLines[2] : '';
 
+    bytes += generator.row([
+      PosColumn(text: invoiceTitle, width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: line0, width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: '# $invoiceNumber', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: line1, width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    if (line2.isNotEmpty) {
       bytes += generator.row([
-        PosColumn(text: invoiceTitle, width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: line0, width: 6, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: '', width: 6),
+        PosColumn(text: line2, width: 6, styles: const PosStyles(align: PosAlign.right)),
       ]);
+    }
+    for (int i = 3; i < addressLines.length; i++) {
       bytes += generator.row([
-        PosColumn(text: '# $invoiceNumber', width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: line1, width: 6, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: '', width: 6),
+        PosColumn(text: addressLines[i], width: 6, styles: const PosStyles(align: PosAlign.right)),
       ]);
-      if (line2.isNotEmpty) {
-        bytes += generator.row([
-          PosColumn(text: '', width: 6),
-          PosColumn(text: line2, width: 6, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      for (int i = 3; i < addressLines.length; i++) {
-        bytes += generator.row([
-          PosColumn(text: '', width: 6),
-          PosColumn(text: addressLines[i], width: 6, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
     }
     bytes += generator.feed(1);
 
@@ -165,6 +164,7 @@ class ThermalReceiptGenerator {
     }
 
     if (custPhone.isNotEmpty) {
+      bytes += generator.feed(1);
       bytes += generator.text('Phone : $custPhone');
     }
 
@@ -201,21 +201,12 @@ class ThermalReceiptGenerator {
       });
     }
 
-    if (is2Inch) {
-      bytes += generator.row([
-        PosColumn(text: 'Item', width: 5, styles: const PosStyles(bold: true)),
-        PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-        PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-        PosColumn(text: 'Total', width: 3, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-    } else {
-      bytes += generator.row([
-        PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-        PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-        PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-    }
+    bytes += generator.row([
+      PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
     for (final item in allItems) {
@@ -224,22 +215,12 @@ class ThermalReceiptGenerator {
       final rate = item['rate'] as String;
       final net = item['net'] as String;
 
-      if (is2Inch && name.length > 14) {
-        bytes += generator.text(name.toUpperCase(), styles: const PosStyles(bold: true));
-        bytes += generator.row([
-          PosColumn(text: '', width: 3),
-          PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-          PosColumn(text: rate, width: 3, styles: const PosStyles(align: PosAlign.right)),
-          PosColumn(text: net, width: 4, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      } else {
-        bytes += generator.row([
-          PosColumn(text: name.toUpperCase(), width: is2Inch ? 5 : 6, styles: const PosStyles(bold: true)),
-          PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-          PosColumn(text: rate, width: 2, styles: const PosStyles(align: PosAlign.right)),
-          PosColumn(text: net, width: is2Inch ? 3 : 2, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
+      bytes += generator.row([
+        PosColumn(text: name.toUpperCase(), width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
+        PosColumn(text: rate, width: 2, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: net, width: 2, styles: const PosStyles(align: PosAlign.right)),
+      ]);
     }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
@@ -306,13 +287,6 @@ class ThermalReceiptGenerator {
       ]);
       bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
     }
-
-    // QR Code
-    bytes += generator.feed(1);
-    try {
-      final String qrData = 'INVOICE:$invoiceNumber|DATE:$dateDisplay|TOTAL:$total|TRN:$trn';
-      bytes += generator.qrcode(qrData, align: PosAlign.center);
-    } catch (_) {}
 
     bytes += generator.feed(3);
     bytes += generator.cut();

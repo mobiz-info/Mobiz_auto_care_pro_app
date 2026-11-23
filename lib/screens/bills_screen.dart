@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter/services.dart';
 import '../providers/language_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -974,7 +975,7 @@ class _BillsScreenState extends State<BillsScreen> {
                   subtitle: Text(
                     isConnected
                         ? '$printerName • $paperSize'
-                        : bc.tr('Tap to connect Bluetooth printer (3" / 4")'),
+                        : bc.tr('Tap to connect Bluetooth printer (2" / 3" / 4")'),
                     style: GoogleFonts.inter(
                       fontSize: 12.sp,
                       color: isConnected ? Colors.green.shade700 : Colors.grey.shade600,
@@ -994,7 +995,28 @@ class _BillsScreenState extends State<BillsScreen> {
                   },
                 ),
 
-                // ── Option 2: Standard A4 / PDF Print ─────────────────
+                // ── Option 2: Thermal Receipt Preview / System Print ──
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.amber.shade50,
+                    child: Icon(Icons.receipt_long, color: Colors.amber.shade800),
+                  ),
+                  title: Text(
+                    bc.tr('Thermal Receipt Preview (2" / 3" Roll)'),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    bc.tr('View thermal roll layout on screen / System Print'),
+                    style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                  onTap: () {
+                    Navigator.pop(bc);
+                    _printThermalReceiptPdf(context, inv);
+                  },
+                ),
+
+                // ── Option 3: Standard A4 / PDF Print ─────────────────
                 ListTile(
                   leading: CircleAvatar(
                     backgroundColor: Colors.purple.shade50,
@@ -1005,7 +1027,7 @@ class _BillsScreenState extends State<BillsScreen> {
                     style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    bc.tr('System print preview / Save as PDF'),
+                    bc.tr('System print preview / Save as A4 PDF'),
                     style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600),
                   ),
                   trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
@@ -1015,7 +1037,7 @@ class _BillsScreenState extends State<BillsScreen> {
                   },
                 ),
 
-                // ── Option 3: Printer Setup ──────────────────────────
+                // ── Option 4: Printer Setup ──────────────────────────
                 ListTile(
                   leading: CircleAvatar(
                     backgroundColor: Colors.grey.shade100,
@@ -1026,7 +1048,7 @@ class _BillsScreenState extends State<BillsScreen> {
                     style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    bc.tr('Configure 3" / 4" paper size & paired printers'),
+                    bc.tr('Configure 2" / 3" / 4" paper size & paired printers'),
                     style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.grey.shade600),
                   ),
                   trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
@@ -1141,6 +1163,285 @@ class _BillsScreenState extends State<BillsScreen> {
         );
       }
     }
+  }
+
+  Future<void> _printThermalReceiptPdf(BuildContext context, Map<String, dynamic> inv) async {
+    try {
+      final btService = BluetoothPrinterService();
+      final paperSize = btService.paperSize;
+      final pdfBytes = await _generateThermalReceiptPdf(context, inv, paperSize: paperSize);
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdfBytes,
+        name: 'thermal-receipt-${inv['invoice_number'].replaceAll('/', '_')}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${context.tr('Failed to preview thermal receipt')}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Uint8List> _generateThermalReceiptPdf(
+    BuildContext context,
+    Map<String, dynamic> inv, {
+    String paperSize = '2inch',
+  }) async {
+    final is2Inch = paperSize == '2inch';
+    final pageFormat = is2Inch ? PdfPageFormat.roll57 : PdfPageFormat.roll80;
+
+    final fontData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+    final notoFont = pw.Font.ttf(fontData);
+
+    final pdf = pw.Document(
+      title: inv['invoice_number']?.toString() ?? 'Thermal Receipt',
+      theme: pw.ThemeData.withFont(
+        base: notoFont,
+        bold: notoFont,
+      ),
+    );
+
+    final companyName = (context.read<AuthProvider>().companyName ?? 'AL BAB AL ABYAD AUTO SERVICES L.L.C').trim();
+    final rawTrn = (inv['company_trn'] ?? inv['branch_gst'] ?? '').toString().trim();
+    final trn = rawTrn.replaceAll(RegExp(r'^(TRN\s*:\s*|TRN\s*|GSTIN\s*:\s*)', caseSensitive: false), '').trim();
+
+    final branchAddress = (inv['branch_address'] ?? '').toString().trim();
+    final List<String> addressLines = [];
+    if (branchAddress.isNotEmpty) {
+      for (final l in branchAddress.split('\n')) {
+        final clean = l.trim();
+        if (clean.isNotEmpty &&
+            !clean.toUpperCase().contains('TRN') &&
+            !clean.toUpperCase().contains('GSTIN') &&
+            !clean.contains('@') &&
+            !clean.contains('www.')) {
+          addressLines.add(clean);
+        }
+      }
+    }
+    if (addressLines.isEmpty && inv['branch'] != null) {
+      addressLines.add(inv['branch'].toString());
+    }
+
+    final double taxAmount = double.tryParse(inv['tax_amount']?.toString() ?? '0') ?? 0.0;
+    final String invoiceTitle = taxAmount > 0 ? 'TAX INVOICE' : 'CASH INVOICE';
+    final String invoiceNumber = (inv['invoice_number'] ?? 'N/A').toString();
+
+    String dateDisplay = (inv['date'] ?? '').toString();
+    try {
+      final dt = DateTime.parse(dateDisplay);
+      dateDisplay = DateFormat('dd/MM/yyyy').format(dt);
+    } catch (_) {}
+
+    final veh = inv['vehicle'] is Map ? (inv['vehicle'] as Map) : null;
+    final String vehNum = (veh?['number'] ?? inv['vehicle_number'] ?? '').toString().trim();
+    final String vehModel = (veh?['model'] ?? veh?['name'] ?? '').toString().trim();
+    final cust = inv['customer'] is Map ? (inv['customer'] as Map) : null;
+    final String custName = (cust?['name'] ?? inv['customer_name'] ?? '').toString().trim();
+    final String custPhone = (cust?['phone'] ?? inv['customer_phone'] ?? '').toString().trim();
+
+    String toText = '';
+    if (vehNum.isNotEmpty) {
+      toText = vehModel.isNotEmpty ? '$vehNum $vehModel' : vehNum;
+      if (custName.isNotEmpty && custName != vehNum) {
+        toText += ' ($custName)';
+      }
+    } else if (custName.isNotEmpty) {
+      toText = custName;
+    }
+
+    final services = inv['services'] as List<dynamic>? ?? [];
+    final tradingItems = inv['trading_items'] as List<dynamic>? ?? [];
+    final allItems = <Map<String, dynamic>>[];
+    for (final s in services) {
+      final double qty = double.tryParse(s['qty']?.toString() ?? '1') ?? 1.0;
+      final double rate = double.tryParse(s['rate']?.toString() ?? '0') ?? 0.0;
+      final double net = double.tryParse(s['net_taxable_amount']?.toString() ?? '') ?? (qty * rate);
+      allItems.add({
+        'name': (s['name'] ?? 'Service').toString(),
+        'qty': qty > 1 ? (qty.truncateToDouble() == qty ? qty.toInt().toString() : qty.toStringAsFixed(1)) : '1',
+        'rate': rate.toStringAsFixed(2),
+        'net': net.toStringAsFixed(2),
+      });
+    }
+    for (final t in tradingItems) {
+      if (t['is_operational'] == true) continue;
+      final double qty = double.tryParse(t['qty']?.toString() ?? '1') ?? 1.0;
+      final double rate = double.tryParse(t['rate']?.toString() ?? '0') ?? 0.0;
+      final double disc = double.tryParse(t['discount']?.toString() ?? '0') ?? 0.0;
+      final double net = (qty * rate) - disc;
+      allItems.add({
+        'name': (t['item_name'] ?? 'Stock Item').toString(),
+        'qty': qty > 1 ? (qty.truncateToDouble() == qty ? qty.toInt().toString() : qty.toStringAsFixed(1)) : '1',
+        'rate': rate.toStringAsFixed(2),
+        'net': net.toStringAsFixed(2),
+      });
+    }
+
+    final double subtotal = double.tryParse(inv['subtotal']?.toString() ?? '0') ?? 0.0;
+    final double discount = double.tryParse(inv['discount']?.toString() ?? '0') ?? 0.0;
+    final double total = double.tryParse(inv['total']?.toString() ?? '0') ?? 0.0;
+    final double paid = double.tryParse(inv['paid_amount']?.toString() ?? '0') ?? 0.0;
+    final double balance = double.tryParse(inv['balance_amount']?.toString() ?? '0') ?? (total - paid);
+    final String currLabel = currencySymbol(context);
+    final double displaySubtotal = subtotal > 0 ? subtotal : total;
+
+    pw.ImageProvider? logoImage;
+    try {
+      final logoUrl = inv['company_logo'] as String? ?? '';
+      if (logoUrl.isNotEmpty) {
+        String fullUrl = logoUrl;
+        if (!fullUrl.startsWith('http')) {
+          if (!fullUrl.startsWith('/')) fullUrl = '/$fullUrl';
+          fullUrl = 'http://68.183.94.11:78$fullUrl';
+        } else if (fullUrl.contains('68.183.94.11') && !fullUrl.contains(':78')) {
+          fullUrl = fullUrl.replaceFirst('68.183.94.11', '68.183.94.11:78');
+        }
+        final res = await http.get(Uri.parse(fullUrl)).timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+          logoImage = pw.MemoryImage(res.bodyBytes);
+        }
+      }
+    } catch (_) {}
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: pageFormat,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        build: (pw.Context ctx) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (logoImage != null)
+                pw.Center(
+                  child: pw.Container(
+                    height: 40,
+                    margin: const pw.EdgeInsets.only(bottom: 4),
+                    child: pw.Image(logoImage),
+                  ),
+                ),
+              pw.Center(
+                child: pw.Text(
+                  companyName.toUpperCase(),
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 9 : 10.5),
+                ),
+              ),
+              if (trn.isNotEmpty)
+                pw.Center(
+                  child: pw.Text('TRN: $trn', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                ),
+              pw.SizedBox(height: 6),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(invoiceTitle, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 8 : 9)),
+                      pw.Text('# $invoiceNumber', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 8 : 9)),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: addressLines.map((l) => pw.Text(l, style: pw.TextStyle(fontSize: is2Inch ? 6.5 : 7.5))).toList(),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text('Date : $dateDisplay', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+              if (toText.isNotEmpty)
+                pw.Text('To : $toText', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+              if (custPhone.isNotEmpty)
+                pw.Text('Phone : $custPhone', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              pw.Row(
+                children: [
+                  pw.Expanded(flex: 6, child: pw.Text('Item', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5))),
+                  pw.Expanded(flex: 2, child: pw.Text('Qty', textAlign: pw.TextAlign.center, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5))),
+                  pw.Expanded(flex: 2, child: pw.Text('Price', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5))),
+                  pw.Expanded(flex: 2, child: pw.Text('Total', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5))),
+                ],
+              ),
+              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              ...allItems.map(
+                (item) => pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(flex: 6, child: pw.Text((item['name'] as String).toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7 : 8))),
+                      pw.Expanded(flex: 2, child: pw.Text(item['qty'] as String, textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: is2Inch ? 7 : 8))),
+                      pw.Expanded(flex: 2, child: pw.Text(item['rate'] as String, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: is2Inch ? 7 : 8))),
+                      pw.Expanded(flex: 2, child: pw.Text(item['net'] as String, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: is2Inch ? 7 : 8))),
+                    ],
+                  ),
+                ),
+              ),
+              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('(Tax Included) Sub Total', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                  pw.Text(displaySubtotal.toStringAsFixed(2), style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                ],
+              ),
+              if (discount > 0)
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Discount', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                    pw.Text('-${discount.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                  ],
+                ),
+              if (taxAmount > 0)
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      inv['tax_rate'] != null && inv['tax_rate'].toString().isNotEmpty ? 'VAT@${inv['tax_rate']}%' : 'VAT@5%',
+                      style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5),
+                    ),
+                    pw.Text(taxAmount.toStringAsFixed(2), style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                  ],
+                ),
+              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 9.5 : 12)),
+                  pw.Text('$currLabel ${total.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 9.5 : 12)),
+                ],
+              ),
+              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total Paid', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                  pw.Text('$currLabel ${(paid > 0 ? paid : total).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: is2Inch ? 7.5 : 8.5)),
+                ],
+              ),
+              if (balance > 0.01) ...[
+                pw.SizedBox(height: 2),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Balance Due', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5)),
+                    pw.Text('$currLabel ${balance.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: is2Inch ? 7.5 : 8.5)),
+                  ],
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
   }
 
   // ── UI ──────────────────────────────────────────────────────────────
