@@ -29,14 +29,54 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
 
   Future<void> _loadInitialState() async {
     setState(() => _isLoading = true);
-    await _printerService.init();
-    _selectedPaperSize = _printerService.paperSize;
-    _autoPrint = _printerService.autoPrint;
-    await _refreshDevices();
-    setState(() => _isLoading = false);
+    try {
+      await _printerService.init();
+      _selectedPaperSize = _printerService.paperSize;
+      _autoPrint = _printerService.autoPrint;
+      if (_printerService.hasPermission) {
+        await _refreshDevices();
+      }
+    } catch (e) {
+      debugPrint('Error loading printer initial state: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _requestPermission() async {
+    setState(() => _isLoading = true);
+    try {
+      final granted = await _printerService.checkAndRequestPermissions();
+      if (granted) {
+        await _refreshDevices();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.tr('Permission denied. Please enable Nearby Devices in App Settings.')),
+              backgroundColor: Colors.orange,
+              action: SnackBarAction(
+                label: context.tr('Settings'),
+                textColor: Colors.white,
+                onPressed: () => _printerService.openSettings(),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error requesting permission: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _refreshDevices() async {
+    if (!_printerService.hasPermission) {
+      await _requestPermission();
+      return;
+    }
+
     final btEnabled = await _printerService.isBluetoothEnabled();
     _isBluetoothEnabled = btEnabled;
     if (btEnabled) {
@@ -152,6 +192,7 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasPermission = _printerService.hasPermission;
     final isConnected = _printerService.isConnected;
     final connectedName = _printerService.connectedName ?? 'Unknown Printer';
     final connectedMac = _printerService.connectedMac ?? '';
@@ -179,8 +220,72 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
           : ListView(
               padding: EdgeInsets.all(16.w),
               children: [
+                // ── 0. Permission Warning Card (if not granted) ──────────────
+                if (!hasPermission)
+                  Container(
+                    margin: EdgeInsets.only(bottom: 16.h),
+                    padding: EdgeInsets.all(16.w),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(14.r),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.security, color: Colors.orange.shade800, size: 24.sp),
+                            SizedBox(width: 10.w),
+                            Expanded(
+                              child: Text(
+                                context.tr('Nearby Devices Permission Required'),
+                                style: GoogleFonts.inter(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          context.tr('To scan and connect to your Bluetooth thermal printer, please allow Nearby Devices permission.'),
+                          style: GoogleFonts.inter(fontSize: 12.sp, color: Colors.orange.shade900),
+                        ),
+                        SizedBox(height: 12.h),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _requestPermission,
+                              icon: const Icon(Icons.check_circle_outline, size: 16),
+                              label: Text(context.tr('Allow Permission')),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF000080),
+                                foregroundColor: Colors.white,
+                                textStyle: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12.sp),
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            OutlinedButton.icon(
+                              onPressed: () => _printerService.openSettings(),
+                              icon: const Icon(Icons.settings, size: 16),
+                              label: Text(context.tr('Open Settings')),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.orange.shade900,
+                                side: BorderSide(color: Colors.orange.shade400),
+                                textStyle: GoogleFonts.inter(fontSize: 12.sp),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // ── 1. Bluetooth Status & Warning ────────────────────────────
-                if (!_isBluetoothEnabled)
+                if (hasPermission && !_isBluetoothEnabled)
                   Container(
                     margin: EdgeInsets.only(bottom: 16.h),
                     padding: EdgeInsets.all(14.w),
@@ -408,7 +513,22 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                 ),
                 SizedBox(height: 8.h),
 
-                if (_pairedDevices.isEmpty)
+                if (!hasPermission)
+                  Container(
+                    padding: EdgeInsets.all(20.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14.r),
+                    ),
+                    child: Center(
+                      child: Text(
+                        context.tr('Please allow Nearby Devices permission above to see paired Bluetooth printers.'),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(fontSize: 13.sp, color: Colors.grey.shade600),
+                      ),
+                    ),
+                  )
+                else if (_pairedDevices.isEmpty)
                   Container(
                     padding: EdgeInsets.all(24.w),
                     decoration: BoxDecoration(

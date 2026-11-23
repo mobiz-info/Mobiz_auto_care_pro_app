@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,14 +20,17 @@ class BluetoothPrinterService {
   String? _connectedName;
   String _paperSize = '3inch';
   bool _autoPrint = false;
+  bool _hasPermission = false;
 
   bool get isConnected => _isConnected;
   String? get connectedMac => _connectedMac;
   String? get connectedName => _connectedName;
   String get paperSize => _paperSize; // '3inch' or '4inch'
   bool get autoPrint => _autoPrint;
+  bool get hasPermission => _hasPermission;
 
   final ValueNotifier<bool> connectionNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> permissionNotifier = ValueNotifier<bool>(true);
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,12 +39,92 @@ class BluetoothPrinterService {
     _paperSize = prefs.getString(keyPaperSize) ?? '3inch';
     _autoPrint = prefs.getBool(keyAutoPrint) ?? false;
 
-    await checkConnection();
+    // Check permission first before invoking any hardware calls
+    _hasPermission = await checkAndRequestPermissions();
+    permissionNotifier.value = _hasPermission;
+
+    if (_hasPermission) {
+      await checkConnection();
+    }
+  }
+
+  /// Checks if required Bluetooth permissions are granted, and requests them if not.
+  Future<bool> checkAndRequestPermissions() async {
+    try {
+      if (Platform.isAndroid) {
+        // First check with plugin's non-blocking call
+        final bool pluginPermission = await PrintBluetoothThermal.isPermissionBluetoothGranted
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
+
+        if (pluginPermission) {
+          _hasPermission = true;
+          permissionNotifier.value = true;
+          return true;
+        }
+
+        // Request Bluetooth permissions using permission_handler
+        final statuses = await [
+          Permission.bluetoothConnect,
+          Permission.bluetoothScan,
+        ].request();
+
+        final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+        final scanGranted = statuses[Permission.bluetoothScan]?.isGranted ?? false;
+
+        bool granted = connectGranted && scanGranted;
+
+        // On older Android (API < 31), check location permission
+        if (!granted) {
+          final locationStatus = await Permission.locationWhenInUse.status;
+          if (!locationStatus.isGranted) {
+            final locRes = await Permission.locationWhenInUse.request();
+            if (locRes.isGranted) {
+              granted = await PrintBluetoothThermal.isPermissionBluetoothGranted
+                  .timeout(const Duration(seconds: 2), onTimeout: () => false);
+            }
+          }
+        }
+
+        _hasPermission = granted;
+        permissionNotifier.value = granted;
+        return granted;
+      } else if (Platform.isIOS) {
+        final status = await Permission.bluetooth.status;
+        if (!status.isGranted) {
+          final res = await Permission.bluetooth.request();
+          _hasPermission = res.isGranted;
+          permissionNotifier.value = res.isGranted;
+          return res.isGranted;
+        }
+        _hasPermission = true;
+        permissionNotifier.value = true;
+        return true;
+      }
+      _hasPermission = true;
+      permissionNotifier.value = true;
+      return true;
+    } catch (e) {
+      debugPrint('Error checking permissions: $e');
+      _hasPermission = false;
+      permissionNotifier.value = false;
+      return false;
+    }
+  }
+
+  Future<void> openSettings() async {
+    await openAppSettings();
   }
 
   Future<bool> checkConnection() async {
+    if (!_hasPermission) {
+      _isConnected = false;
+      connectionNotifier.value = false;
+      return false;
+    }
+
     try {
-      final status = await PrintBluetoothThermal.connectionStatus;
+      final status = await PrintBluetoothThermal.connectionStatus
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
       _isConnected = status;
       connectionNotifier.value = status;
       return status;
@@ -52,8 +137,11 @@ class BluetoothPrinterService {
   }
 
   Future<bool> isBluetoothEnabled() async {
+    if (!_hasPermission) return false;
+
     try {
-      return await PrintBluetoothThermal.bluetoothEnabled;
+      return await PrintBluetoothThermal.bluetoothEnabled
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
     } catch (e) {
       debugPrint('Error checking bluetooth enabled: $e');
       return false;
@@ -61,8 +149,11 @@ class BluetoothPrinterService {
   }
 
   Future<List<BluetoothInfo>> getPairedDevices() async {
+    if (!_hasPermission) return [];
+
     try {
-      final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths
+          .timeout(const Duration(seconds: 4), onTimeout: () => []);
       return devices;
     } catch (e) {
       debugPrint('Error fetching paired bluetooth devices: $e');
@@ -71,13 +162,18 @@ class BluetoothPrinterService {
   }
 
   Future<bool> connect(String macAddress, {String? deviceName}) async {
+    if (!_hasPermission) {
+      final granted = await checkAndRequestPermissions();
+      if (!granted) return false;
+    }
+
     try {
-      // Disconnect if already connected to another device
       if (_isConnected) {
         await disconnect();
       }
 
-      final bool result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+      final bool result = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress)
+          .timeout(const Duration(seconds: 6), onTimeout: () => false);
       _isConnected = result;
       connectionNotifier.value = result;
 
@@ -101,7 +197,8 @@ class BluetoothPrinterService {
 
   Future<bool> disconnect() async {
     try {
-      final bool result = await PrintBluetoothThermal.disconnect;
+      final bool result = await PrintBluetoothThermal.disconnect
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
       _isConnected = false;
       connectionNotifier.value = false;
       return result;
@@ -126,10 +223,14 @@ class BluetoothPrinterService {
   }
 
   Future<bool> printBytes(List<int> bytes) async {
+    if (!_hasPermission) {
+      final granted = await checkAndRequestPermissions();
+      if (!granted) return false;
+    }
+
     try {
       final bool connected = await checkConnection();
       if (!connected) {
-        // Try to reconnect if saved mac exists
         if (_connectedMac != null && _connectedMac!.isNotEmpty) {
           final reconnected = await connect(_connectedMac!, deviceName: _connectedName);
           if (!reconnected) return false;
@@ -137,7 +238,8 @@ class BluetoothPrinterService {
           return false;
         }
       }
-      final bool result = await PrintBluetoothThermal.writeBytes(bytes);
+      final bool result = await PrintBluetoothThermal.writeBytes(bytes)
+          .timeout(const Duration(seconds: 8), onTimeout: () => false);
       return result;
     } catch (e) {
       debugPrint('Error printing bytes: $e');
