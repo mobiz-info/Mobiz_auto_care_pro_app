@@ -403,6 +403,23 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                   child: Column(
                     children: [
                       RadioListTile<String>(
+                        value: '2inch',
+                        groupValue: _selectedPaperSize,
+                        onChanged: (val) {
+                          if (val != null) _onPaperSizeChanged(val);
+                        },
+                        title: Text(
+                          context.tr('2 Inch (58mm) — Compact Handheld POS'),
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.sp),
+                        ),
+                        subtitle: Text(
+                          context.tr('Small handheld mobile Bluetooth printer format (384 dots)'),
+                          style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade500),
+                        ),
+                        activeColor: const Color(0xFF000080),
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<String>(
                         value: '3inch',
                         groupValue: _selectedPaperSize,
                         onChanged: (val) {

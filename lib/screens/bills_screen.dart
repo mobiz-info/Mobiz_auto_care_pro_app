@@ -904,7 +904,9 @@ class _BillsScreenState extends State<BillsScreen> {
     final btService = BluetoothPrinterService();
     final isConnected = btService.isConnected;
     final printerName = btService.connectedName ?? 'Bluetooth Printer';
-    final paperSize = btService.paperSize == '4inch' ? '4 Inch (100mm)' : '3 Inch (80mm)';
+    final paperSize = btService.paperSize == '2inch'
+        ? '2 Inch (58mm)'
+        : (btService.paperSize == '4inch' ? '4 Inch (100mm)' : '3 Inch (80mm)');
 
     showModalBottomSheet(
       context: context,
@@ -1080,10 +1082,13 @@ class _BillsScreenState extends State<BillsScreen> {
 
       if (context.mounted) {
         if (success) {
+          final sizeLabel = btService.paperSize == '2inch'
+              ? '2"'
+              : (btService.paperSize == '4inch' ? '4"' : '3"');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '${context.tr('Bill printed successfully on')} ${btService.connectedName ?? 'printer'} (${btService.paperSize == '4inch' ? '4"' : '3"'})',
+                '${context.tr('Bill printed successfully on')} ${btService.connectedName ?? 'printer'} ($sizeLabel)',
               ),
               backgroundColor: Colors.green,
             ),
