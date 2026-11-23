@@ -41,6 +41,73 @@ class ThermalReceiptGenerator {
     }
   }
 
+  /// Two columns (Left and Right aligned) formatted with pure spaces (NO ESC $).
+  /// This prevents garbage characters on all Bluetooth thermal printers.
+  static String _twoCol(String left, String right, int lineLen) {
+    final l = left.trim();
+    final r = right.trim();
+    if (l.isEmpty) {
+      if (r.length >= lineLen) return r;
+      return r.padLeft(lineLen);
+    }
+    if (r.isEmpty) {
+      return l;
+    }
+    if (l.length + r.length + 1 > lineLen) {
+      final avail = lineLen - r.length - 1;
+      if (avail >= 4) {
+        final cutL = l.substring(0, avail).trim();
+        final spaces = lineLen - cutL.length - r.length;
+        return '$cutL${' ' * (spaces > 0 ? spaces : 1)}$r';
+      }
+      return '$l\n${r.padLeft(lineLen)}';
+    }
+    final spaces = lineLen - l.length - r.length;
+    return '$l${' ' * spaces}$r';
+  }
+
+  /// Four columns table row (Item, Qty, Price, Total) formatted with spaces.
+  static List<String> _formatTableRow({
+    required String col1,
+    required String col2,
+    required String col3,
+    required String col4,
+    required int lineLen,
+  }) {
+    final bool is2Inch = lineLen <= 32;
+    final bool is4Inch = lineLen >= 64;
+
+    final int w1 = is2Inch ? 14 : (is4Inch ? 34 : 22);
+    final int w2 = is2Inch ? 3 : (is4Inch ? 5 : 4);
+    final int w3 = is2Inch ? 6 : (is4Inch ? 11 : 9);
+    final int w4 = is2Inch ? 6 : (is4Inch ? 11 : 10);
+
+    final s2 = col2.padLeft(w2);
+    final s3 = col3.padLeft(w3);
+    final s4 = col4.padLeft(w4);
+    final suffix = ' $s2 $s3 $s4';
+
+    final lines = <String>[];
+    if (col1.length <= w1) {
+      final s1 = col1.padRight(w1);
+      lines.add('$s1$suffix');
+    } else {
+      final part1 = col1.substring(0, w1).trim().padRight(w1);
+      lines.add('$part1$suffix');
+      String remaining = col1.substring(w1).trim();
+      while (remaining.isNotEmpty) {
+        if (remaining.length <= lineLen) {
+          lines.add(remaining);
+          break;
+        } else {
+          lines.add(remaining.substring(0, lineLen).trim());
+          remaining = remaining.substring(lineLen).trim();
+        }
+      }
+    }
+    return lines;
+  }
+
   static Future<List<int>> generateBillReceipt({
     required Map<String, dynamic> inv,
     required String paperSize, // '2inch' (58mm), '3inch' (80mm) or '4inch' (100mm)
@@ -78,10 +145,7 @@ class ThermalReceiptGenerator {
 
     bytes += generator.text(
       authCompanyName.toUpperCase(),
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-      ),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
     );
 
     if (trn.isNotEmpty) {
@@ -92,13 +156,19 @@ class ThermalReceiptGenerator {
     }
     bytes += generator.feed(1);
 
-    // ── 2. INVOICE META & ADDRESS (Left: TAX INVOICE | Right: Address) ─────
+    // ── 2. INVOICE META & ADDRESS (Side-by-side using space padding) ──────
     final String branchAddress = (inv['branch_address'] ?? '').toString().trim();
     final List<String> addressLines = [];
     if (branchAddress.isNotEmpty) {
       for (final l in branchAddress.split('\n')) {
         final clean = l.trim();
-        if (clean.isNotEmpty) addressLines.add(clean);
+        if (clean.isNotEmpty &&
+            !clean.toUpperCase().contains('TRN') &&
+            !clean.toUpperCase().contains('GSTIN') &&
+            !clean.contains('@') &&
+            !clean.contains('www.')) {
+          addressLines.add(clean);
+        }
       }
     }
     if (addressLines.isEmpty && inv['branch'] != null) {
@@ -109,29 +179,14 @@ class ThermalReceiptGenerator {
     final String invoiceTitle = taxAmount > 0 ? 'TAX INVOICE' : 'CASH INVOICE';
     final String invoiceNumber = (inv['invoice_number'] ?? 'N/A').toString();
 
-    final String line0 = addressLines.isNotEmpty ? addressLines[0] : '';
-    final String line1 = addressLines.length > 1 ? addressLines[1] : '';
-    final String line2 = addressLines.length > 2 ? addressLines[2] : '';
+    final String addr0 = addressLines.isNotEmpty ? addressLines[0] : '';
+    final String addr1 = addressLines.length > 1 ? addressLines[1] : '';
 
-    bytes += generator.row([
-      PosColumn(text: invoiceTitle, width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: line0, width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    bytes += generator.row([
-      PosColumn(text: '# $invoiceNumber', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: line1, width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    if (line2.isNotEmpty) {
-      bytes += generator.row([
-        PosColumn(text: '', width: 6),
-        PosColumn(text: line2, width: 6, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-    }
-    for (int i = 3; i < addressLines.length; i++) {
-      bytes += generator.row([
-        PosColumn(text: '', width: 6),
-        PosColumn(text: addressLines[i], width: 6, styles: const PosStyles(align: PosAlign.right)),
-      ]);
+    bytes += generator.text(_twoCol(invoiceTitle, addr0, lineLength), styles: const PosStyles(bold: true));
+    bytes += generator.text(_twoCol('# $invoiceNumber', addr1, lineLength), styles: const PosStyles(bold: true));
+
+    for (int i = 2; i < addressLines.length; i++) {
+      bytes += generator.text(_twoCol('', addressLines[i], lineLength));
     }
     bytes += generator.feed(1);
 
@@ -201,26 +256,36 @@ class ThermalReceiptGenerator {
       });
     }
 
-    bytes += generator.row([
-      PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-    ]);
+    // Header row
+    final headerLines = _formatTableRow(
+      col1: 'Item',
+      col2: 'Qty',
+      col3: 'Price',
+      col4: 'Total',
+      lineLen: lineLength,
+    );
+    for (final hl in headerLines) {
+      bytes += generator.text(hl, styles: const PosStyles(bold: true));
+    }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
+    // Item rows
     for (final item in allItems) {
       final name = item['name'] as String;
       final qty = item['qty'] as String;
       final rate = item['rate'] as String;
       final net = item['net'] as String;
 
-      bytes += generator.row([
-        PosColumn(text: name.toUpperCase(), width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-        PosColumn(text: rate, width: 2, styles: const PosStyles(align: PosAlign.right)),
-        PosColumn(text: net, width: 2, styles: const PosStyles(align: PosAlign.right)),
-      ]);
+      final rows = _formatTableRow(
+        col1: name.toUpperCase(),
+        col2: qty,
+        col3: rate,
+        col4: net,
+        lineLen: lineLength,
+      );
+      for (final r in rows) {
+        bytes += generator.text(r);
+      }
     }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
@@ -235,56 +300,44 @@ class ThermalReceiptGenerator {
     final double displaySubtotal = subtotal > 0 ? subtotal : total;
 
     // (Tax Included) Sub Total
-    bytes += generator.row([
-      PosColumn(text: '(Tax Included) Sub Total', width: 8),
-      PosColumn(text: displaySubtotal.toStringAsFixed(2), width: 4, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    bytes += generator.text(
+      _twoCol('(Tax Included) Sub Total', displaySubtotal.toStringAsFixed(2), lineLength),
+    );
 
     if (discount > 0) {
-      bytes += generator.row([
-        PosColumn(text: 'Discount', width: 8),
-        PosColumn(text: '-${discount.toStringAsFixed(2)}', width: 4, styles: const PosStyles(align: PosAlign.right)),
-      ]);
+      bytes += generator.text(
+        _twoCol('Discount', '-${discount.toStringAsFixed(2)}', lineLength),
+      );
     }
 
     if (taxAmount > 0) {
       final String taxLabel = (inv['tax_rate'] != null && inv['tax_rate'].toString().isNotEmpty)
           ? 'VAT@${inv['tax_rate']}%'
           : 'VAT@5%';
-      bytes += generator.row([
-        PosColumn(text: taxLabel, width: 8),
-        PosColumn(text: taxAmount.toStringAsFixed(2), width: 4, styles: const PosStyles(align: PosAlign.right)),
-      ]);
+      bytes += generator.text(
+        _twoCol(taxLabel, taxAmount.toStringAsFixed(2), lineLength),
+      );
     }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    // Grand Total (Large font, bold)
-    bytes += generator.row([
-      PosColumn(
-        text: 'Total',
-        width: 4,
-        styles: PosStyles(bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
-      ),
-      PosColumn(
-        text: '$currLabel ${total.toStringAsFixed(2)}',
-        width: 8,
-        styles: PosStyles(align: PosAlign.right, bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
-      ),
-    ]);
+    // Grand Total (Bold)
+    bytes += generator.text(
+      _twoCol('Total', '$currLabel ${total.toStringAsFixed(2)}', lineLength),
+      styles: const PosStyles(bold: true),
+    );
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
     // Total Paid
     final double displayPaid = paid > 0 ? paid : total;
-    bytes += generator.row([
-      PosColumn(text: 'Total Paid', width: 6),
-      PosColumn(text: '$currLabel ${displayPaid.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    bytes += generator.text(
+      _twoCol('Total Paid', '$currLabel ${displayPaid.toStringAsFixed(2)}', lineLength),
+    );
 
     if (balance > 0.01) {
-      bytes += generator.row([
-        PosColumn(text: 'Balance Due', width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: '$currLabel ${balance.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
+      bytes += generator.text(
+        _twoCol('Balance Due', '$currLabel ${balance.toStringAsFixed(2)}', lineLength),
+        styles: const PosStyles(bold: true),
+      );
       bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
     }
 
@@ -319,14 +372,14 @@ class ThermalReceiptGenerator {
     );
     bytes += generator.feed(1);
 
-    bytes += generator.row([
-      PosColumn(text: 'TAX INVOICE', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'Industrial Area 4', width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    bytes += generator.row([
-      PosColumn(text: '# TEST-001', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'Sharjah, UAE', width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    bytes += generator.text(
+      _twoCol('TAX INVOICE', 'Industrial Area 4', lineLength),
+      styles: const PosStyles(bold: true),
+    );
+    bytes += generator.text(
+      _twoCol('# TEST-001', 'Sharjah, UAE', lineLength),
+      styles: const PosStyles(bold: true),
+    );
     bytes += generator.feed(1);
 
     bytes += generator.text('Date : 13/11/2026');
@@ -334,46 +387,47 @@ class ThermalReceiptGenerator {
     bytes += generator.text('Phone : 29930 MAZDA');
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.row([
-      PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-    ]);
+    final headerLines = _formatTableRow(
+      col1: 'Item',
+      col2: 'Qty',
+      col3: 'Price',
+      col4: 'Total',
+      lineLen: lineLength,
+    );
+    for (final hl in headerLines) {
+      bytes += generator.text(hl, styles: const PosStyles(bold: true));
+    }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.row([
-      PosColumn(text: 'BODY WASH-SALOON', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.center)),
-      PosColumn(text: '25.00', width: 2, styles: const PosStyles(align: PosAlign.right)),
-      PosColumn(text: '25.00', width: 2, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    final rows = _formatTableRow(
+      col1: 'BODY WASH-SALOON',
+      col2: '1',
+      col3: '25.00',
+      col4: '25.00',
+      lineLen: lineLength,
+    );
+    for (final r in rows) {
+      bytes += generator.text(r);
+    }
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.row([
-      PosColumn(text: '(Tax Included) Sub Total', width: 8),
-      PosColumn(text: '25.00', width: 4, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    bytes += generator.row([
-      PosColumn(text: 'VAT@5%', width: 8),
-      PosColumn(text: '1.19', width: 4, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    bytes += generator.text(
+      _twoCol('(Tax Included) Sub Total', '25.00', lineLength),
+    );
+    bytes += generator.text(
+      _twoCol('VAT@5%', '1.19', lineLength),
+    );
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.row([
-      PosColumn(text: 'Total', width: 4, styles: PosStyles(bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2)),
-      PosColumn(
-        text: 'AED 25.00',
-        width: 8,
-        styles: PosStyles(align: PosAlign.right, bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
-      ),
-    ]);
+    bytes += generator.text(
+      _twoCol('Total', 'AED 25.00', lineLength),
+      styles: const PosStyles(bold: true),
+    );
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.row([
-      PosColumn(text: 'Total Paid', width: 6),
-      PosColumn(text: 'AED 25.00', width: 6, styles: const PosStyles(align: PosAlign.right)),
-    ]);
+    bytes += generator.text(
+      _twoCol('Total Paid', 'AED 25.00', lineLength),
+    );
 
     bytes += generator.feed(3);
     bytes += generator.cut();
