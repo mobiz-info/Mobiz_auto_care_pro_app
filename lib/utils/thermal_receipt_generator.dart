@@ -1,10 +1,43 @@
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
+import 'package:intl/intl.dart';
 
 class ThermalReceiptGenerator {
+  static Future<img.Image?> _loadLogoImage(String? logoUrl, int maxWidth) async {
+    try {
+      Uint8List? imageBytes;
+      if (logoUrl != null && logoUrl.isNotEmpty) {
+        try {
+          final res = await http.get(Uri.parse(logoUrl)).timeout(const Duration(seconds: 2));
+          if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+            imageBytes = res.bodyBytes;
+          }
+        } catch (_) {}
+      }
+      if (imageBytes == null) {
+        try {
+          final byteData = await rootBundle.load('assets/icons/mobiz_autocare_mark_blue.png');
+          imageBytes = byteData.buffer.asUint8List();
+        } catch (_) {}
+      }
+      if (imageBytes == null) return null;
+
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+
+      final resized = img.copyResize(decoded, width: maxWidth);
+      return img.grayscale(resized);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<List<int>> generateBillReceipt({
     required Map<String, dynamic> inv,
     required String paperSize, // '2inch' (58mm), '3inch' (80mm) or '4inch' (100mm)
-    String companyName = 'Mobiz Autocare Pro',
+    String companyName = 'AL BAB AL ABYAD AUTO SERVICES L.L.C',
     String currency = 'AED',
   }) async {
     final profile = await CapabilityProfile.load();
@@ -16,130 +49,128 @@ class ThermalReceiptGenerator {
 
     final int lineLength = is2Inch ? 32 : (is4Inch ? 64 : 48);
     final String divider = '-' * lineLength;
-    final String doubleDivider = '=' * lineLength;
 
     // Reset printer
     bytes += generator.reset();
 
-    // ── 1. HEADER ────────────────────────────────────────────────────────
-    final String branchName = (inv['branch'] ?? '').toString().trim();
-    final String branchAddress = (inv['branch_address'] ?? '').toString().trim();
-    final String branchPhone = (inv['branch_phone'] ?? '').toString().trim();
-    final String branchEmail = (inv['branch_email'] ?? '').toString().trim();
+    // ── 0. LOGO BANNER (Centered) ─────────────────────────────────────────
+    final String? logoUrl = inv['company_logo'] as String?;
+    final int logoWidth = is2Inch ? 260 : (is4Inch ? 400 : 320);
+    final logoImage = await _loadLogoImage(logoUrl, logoWidth);
+    if (logoImage != null) {
+      try {
+        bytes += generator.imageRaster(logoImage, align: PosAlign.center);
+        bytes += generator.feed(1);
+      } catch (_) {}
+    }
+
+    // ── 1. COMPANY NAME & TRN (Centered) ──────────────────────────────────
+    final String authCompanyName = companyName.isNotEmpty ? companyName : 'AL BAB AL ABYAD AUTO SERVICES L.L.C';
     final String rawTrn = (inv['company_trn'] ?? inv['branch_gst'] ?? '').toString().trim();
     final String trn = rawTrn.replaceAll(RegExp(r'^(TRN\s*:\s*|TRN\s*|GSTIN\s*:\s*)', caseSensitive: false), '').trim();
 
-    // Company Name (Centered, Bold, Double Height for 3"/4", Normal/Bold for 2")
     bytes += generator.text(
-      companyName.toUpperCase(),
-      styles: PosStyles(
+      authCompanyName.toUpperCase(),
+      styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
-        height: is2Inch ? PosTextSize.size1 : PosTextSize.size2,
-        width: PosTextSize.size1,
       ),
     );
 
-    if (branchName.isNotEmpty) {
-      bytes += generator.text(
-        branchName,
-        styles: const PosStyles(align: PosAlign.center, bold: true),
-      );
-    }
-
-    if (branchAddress.isNotEmpty) {
-      for (final line in branchAddress.split('\n')) {
-        final clean = line.trim();
-        if (clean.isNotEmpty) {
-          bytes += generator.text(clean, styles: const PosStyles(align: PosAlign.center));
-        }
-      }
-    }
-
-    if (branchPhone.isNotEmpty) {
-      bytes += generator.text('Tel: $branchPhone', styles: const PosStyles(align: PosAlign.center));
-    }
-    if (branchEmail.isNotEmpty) {
-      bytes += generator.text('Email: $branchEmail', styles: const PosStyles(align: PosAlign.center));
-    }
     if (trn.isNotEmpty) {
       bytes += generator.text(
-        'TRN / GSTIN: $trn',
-        styles: const PosStyles(align: PosAlign.center, bold: true),
+        'TRN: $trn',
+        styles: const PosStyles(align: PosAlign.center),
       );
     }
+    bytes += generator.feed(1);
 
-    bytes += generator.text(doubleDivider, styles: const PosStyles(align: PosAlign.center));
+    // ── 2. INVOICE META & ADDRESS (Left: TAX INVOICE | Right: Address) ─────
+    final String branchAddress = (inv['branch_address'] ?? '').toString().trim();
+    final List<String> addressLines = [];
+    if (branchAddress.isNotEmpty) {
+      for (final l in branchAddress.split('\n')) {
+        final clean = l.trim();
+        if (clean.isNotEmpty) addressLines.add(clean);
+      }
+    }
+    if (addressLines.isEmpty && inv['branch'] != null) {
+      addressLines.add(inv['branch'].toString());
+    }
 
-    // ── 2. INVOICE META ──────────────────────────────────────────────────
     final double taxAmount = double.tryParse(inv['tax_amount']?.toString() ?? '0') ?? 0.0;
     final String invoiceTitle = taxAmount > 0 ? 'TAX INVOICE' : 'CASH INVOICE';
     final String invoiceNumber = (inv['invoice_number'] ?? 'N/A').toString();
-    final String invoiceDate = (inv['date'] ?? '').toString();
 
-    bytes += generator.text(
-      invoiceTitle,
-      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
-    );
+    if (is2Inch) {
+      bytes += generator.text(invoiceTitle, styles: const PosStyles(bold: true));
+      bytes += generator.text('# $invoiceNumber', styles: const PosStyles(bold: true));
+      for (final line in addressLines) {
+        bytes += generator.text(line, styles: const PosStyles(align: PosAlign.right));
+      }
+    } else {
+      final String line0 = addressLines.isNotEmpty ? addressLines[0] : '';
+      final String line1 = addressLines.length > 1 ? addressLines[1] : '';
+      final String line2 = addressLines.length > 2 ? addressLines[2] : '';
+
+      bytes += generator.row([
+        PosColumn(text: invoiceTitle, width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: line0, width: 6, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+      bytes += generator.row([
+        PosColumn(text: '# $invoiceNumber', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: line1, width: 6, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+      if (line2.isNotEmpty) {
+        bytes += generator.row([
+          PosColumn(text: '', width: 6),
+          PosColumn(text: line2, width: 6, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      for (int i = 3; i < addressLines.length; i++) {
+        bytes += generator.row([
+          PosColumn(text: '', width: 6),
+          PosColumn(text: addressLines[i], width: 6, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+    }
     bytes += generator.feed(1);
 
-    bytes += generator.row([
-      PosColumn(text: 'Invoice No:', width: is2Inch ? 5 : 4, styles: const PosStyles(bold: true)),
-      PosColumn(text: invoiceNumber, width: is2Inch ? 7 : 8, styles: const PosStyles(align: PosAlign.right, bold: true)),
-    ]);
+    // ── 3. DATE, TO, PHONE ────────────────────────────────────────────────
+    String dateDisplay = (inv['date'] ?? '').toString();
+    try {
+      final dt = DateTime.parse(dateDisplay);
+      dateDisplay = DateFormat('dd/MM/yyyy').format(dt);
+    } catch (_) {}
+    bytes += generator.text('Date : $dateDisplay');
 
-    if (invoiceDate.isNotEmpty) {
-      bytes += generator.row([
-        PosColumn(text: 'Date & Time:', width: is2Inch ? 5 : 4),
-        PosColumn(text: invoiceDate, width: is2Inch ? 7 : 8, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-    }
-
-    // Customer Info
-    final cust = inv['customer'] is Map ? (inv['customer'] as Map) : null;
-    final String custName = (cust?['name'] ?? inv['customer_name'] ?? '').toString().trim();
-    final String custPhone = (cust?['phone'] ?? inv['customer_phone'] ?? '').toString().trim();
-    if (custName.isNotEmpty) {
-      bytes += generator.row([
-        PosColumn(text: 'Customer:', width: is2Inch ? 4 : 4),
-        PosColumn(
-          text: custPhone.isNotEmpty ? '$custName ($custPhone)' : custName,
-          width: is2Inch ? 8 : 8,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]);
-    }
-
-    // Vehicle Info
     final veh = inv['vehicle'] is Map ? (inv['vehicle'] as Map) : null;
     final String vehNum = (veh?['number'] ?? inv['vehicle_number'] ?? '').toString().trim();
     final String vehModel = (veh?['model'] ?? veh?['name'] ?? '').toString().trim();
+    final cust = inv['customer'] is Map ? (inv['customer'] as Map) : null;
+    final String custName = (cust?['name'] ?? inv['customer_name'] ?? '').toString().trim();
+    final String custPhone = (cust?['phone'] ?? inv['customer_phone'] ?? '').toString().trim();
+
+    String toText = '';
     if (vehNum.isNotEmpty) {
-      bytes += generator.row([
-        PosColumn(text: 'Vehicle No:', width: 4, styles: const PosStyles(bold: true)),
-        PosColumn(
-          text: vehModel.isNotEmpty ? '$vehNum - $vehModel' : vehNum,
-          width: 8,
-          styles: const PosStyles(align: PosAlign.right, bold: true),
-        ),
-      ]);
+      toText = vehModel.isNotEmpty ? '$vehNum $vehModel' : vehNum;
+      if (custName.isNotEmpty && custName != vehNum) {
+        toText += ' ($custName)';
+      }
+    } else if (custName.isNotEmpty) {
+      toText = custName;
+    }
+    if (toText.isNotEmpty) {
+      bytes += generator.text('To : $toText');
     }
 
-    // Payment Mode
-    String paymentMode = (inv['payment_mode'] ?? '').toString().trim();
-    if (paymentMode.isEmpty) {
-      paymentMode = inv['invoice_type'] == 'creditinvoice' ? 'Credit' : 'Cash';
-    } else {
-      paymentMode = paymentMode.replaceAll('_', ' ').toUpperCase();
+    if (custPhone.isNotEmpty) {
+      bytes += generator.text('Phone : $custPhone');
     }
-    bytes += generator.row([
-      PosColumn(text: 'Payment Mode:', width: 5),
-      PosColumn(text: paymentMode, width: 7, styles: const PosStyles(align: PosAlign.right)),
-    ]);
 
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    // ── 3. ITEMS TABLE ───────────────────────────────────────────────────
+    // ── 4. ITEMS TABLE (Item | Qty | Price | Total) ───────────────────────
     final services = inv['services'] as List<dynamic>? ?? [];
     final tradingItems = inv['trading_items'] as List<dynamic>? ?? [];
     final allItems = <Map<String, dynamic>>[];
@@ -153,7 +184,6 @@ class ThermalReceiptGenerator {
         'qty': qty > 1 ? (qty.truncateToDouble() == qty ? qty.toInt().toString() : qty.toStringAsFixed(1)) : '1',
         'rate': rate.toStringAsFixed(2),
         'net': net.toStringAsFixed(2),
-        'raw_rate': rate,
       });
     }
 
@@ -168,77 +198,52 @@ class ThermalReceiptGenerator {
         'qty': qty > 1 ? (qty.truncateToDouble() == qty ? qty.toInt().toString() : qty.toStringAsFixed(1)) : '1',
         'rate': rate.toStringAsFixed(2),
         'net': net.toStringAsFixed(2),
-        'raw_rate': rate,
       });
     }
 
-    // Header Row
     if (is2Inch) {
-      // 2-Inch Compact Layout
       bytes += generator.row([
-        PosColumn(text: 'Item', width: 7, styles: const PosStyles(bold: true)),
+        PosColumn(text: 'Item', width: 5, styles: const PosStyles(bold: true)),
         PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
+        PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
         PosColumn(text: 'Total', width: 3, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
-    } else if (is4Inch) {
-      // 4-Inch Wide Layout: Description (5), Qty (2), Rate (2), Amount (3)
-      bytes += generator.row([
-        PosColumn(text: 'Item Description', width: 5, styles: const PosStyles(bold: true)),
-        PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-        PosColumn(text: 'Rate', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
-        PosColumn(text: 'Amount', width: 3, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
     } else {
-      // 3-Inch Standard Layout: Description (6), Qty (2), Total (4)
       bytes += generator.row([
-        PosColumn(text: 'Item Description', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-        PosColumn(text: 'Total', width: 4, styles: const PosStyles(align: PosAlign.right, bold: true)),
+        PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+        PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
     }
-
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    // Item Rows
     for (final item in allItems) {
       final name = item['name'] as String;
       final qty = item['qty'] as String;
       final rate = item['rate'] as String;
       final net = item['net'] as String;
 
-      if (is2Inch) {
-        if (name.length > 15) {
-          bytes += generator.text(name);
-          bytes += generator.row([
-            PosColumn(text: '  $qty x $rate', width: 7),
-            PosColumn(text: net, width: 5, styles: const PosStyles(align: PosAlign.right)),
-          ]);
-        } else {
-          bytes += generator.row([
-            PosColumn(text: name, width: 7),
-            PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-            PosColumn(text: net, width: 3, styles: const PosStyles(align: PosAlign.right)),
-          ]);
-        }
-      } else if (is4Inch) {
+      if (is2Inch && name.length > 14) {
+        bytes += generator.text(name.toUpperCase(), styles: const PosStyles(bold: true));
         bytes += generator.row([
-          PosColumn(text: name, width: 5),
+          PosColumn(text: '', width: 3),
           PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-          PosColumn(text: rate, width: 2, styles: const PosStyles(align: PosAlign.right)),
-          PosColumn(text: net, width: 3, styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: rate, width: 3, styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: net, width: 4, styles: const PosStyles(align: PosAlign.right)),
         ]);
       } else {
         bytes += generator.row([
-          PosColumn(text: name, width: 6),
+          PosColumn(text: name.toUpperCase(), width: is2Inch ? 5 : 6, styles: const PosStyles(bold: true)),
           PosColumn(text: qty, width: 2, styles: const PosStyles(align: PosAlign.center)),
-          PosColumn(text: net, width: 4, styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: rate, width: 2, styles: const PosStyles(align: PosAlign.right)),
+          PosColumn(text: net, width: is2Inch ? 3 : 2, styles: const PosStyles(align: PosAlign.right)),
         ]);
       }
     }
-
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    // ── 4. TOTALS & TAX ──────────────────────────────────────────────────
+    // ── 5. TOTALS & TAX (Sub Total, VAT, Grand Total) ─────────────────────
     final double subtotal = double.tryParse(inv['subtotal']?.toString() ?? '0') ?? 0.0;
     final double discount = double.tryParse(inv['discount']?.toString() ?? '0') ?? 0.0;
     final double total = double.tryParse(inv['total']?.toString() ?? '0') ?? 0.0;
@@ -246,73 +251,68 @@ class ThermalReceiptGenerator {
     final double balance = double.tryParse(inv['balance_amount']?.toString() ?? '0') ?? (total - paid);
 
     final String currLabel = _cleanCurrency(currency);
+    final double displaySubtotal = subtotal > 0 ? subtotal : total;
 
-    if (subtotal > 0) {
-      bytes += generator.row([
-        PosColumn(text: 'Subtotal:', width: 6),
-        PosColumn(text: '$currLabel ${subtotal.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-    }
+    // (Tax Included) Sub Total
+    bytes += generator.row([
+      PosColumn(text: '(Tax Included) Sub Total', width: 8),
+      PosColumn(text: displaySubtotal.toStringAsFixed(2), width: 4, styles: const PosStyles(align: PosAlign.right)),
+    ]);
 
     if (discount > 0) {
       bytes += generator.row([
-        PosColumn(text: 'Discount:', width: 6),
-        PosColumn(text: '-$currLabel ${discount.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: 'Discount', width: 8),
+        PosColumn(text: '-${discount.toStringAsFixed(2)}', width: 4, styles: const PosStyles(align: PosAlign.right)),
       ]);
     }
 
     if (taxAmount > 0) {
+      final String taxLabel = (inv['tax_rate'] != null && inv['tax_rate'].toString().isNotEmpty)
+          ? 'VAT@${inv['tax_rate']}%'
+          : 'VAT@5%';
       bytes += generator.row([
-        PosColumn(text: 'VAT / Tax:', width: 6),
-        PosColumn(text: '$currLabel ${taxAmount.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: taxLabel, width: 8),
+        PosColumn(text: taxAmount.toStringAsFixed(2), width: 4, styles: const PosStyles(align: PosAlign.right)),
       ]);
     }
-
     bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    // GRAND TOTAL
+    // Grand Total (Large font, bold)
     bytes += generator.row([
-      PosColumn(text: 'TOTAL AMOUNT:', width: 6, styles: PosStyles(bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2)),
+      PosColumn(
+        text: 'Total',
+        width: 4,
+        styles: PosStyles(bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
+      ),
       PosColumn(
         text: '$currLabel ${total.toStringAsFixed(2)}',
-        width: 6,
+        width: 8,
         styles: PosStyles(align: PosAlign.right, bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
       ),
     ]);
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
 
-    bytes += generator.text(doubleDivider, styles: const PosStyles(align: PosAlign.center));
-
-    if (paid > 0) {
-      bytes += generator.row([
-        PosColumn(text: 'Paid Amount:', width: 6),
-        PosColumn(text: '$currLabel ${paid.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-    }
+    // Total Paid
+    final double displayPaid = paid > 0 ? paid : total;
+    bytes += generator.row([
+      PosColumn(text: 'Total Paid', width: 6),
+      PosColumn(text: '$currLabel ${displayPaid.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
 
     if (balance > 0.01) {
       bytes += generator.row([
-        PosColumn(text: 'Balance Due:', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: 'Balance Due', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(text: '$currLabel ${balance.toStringAsFixed(2)}', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
       bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
     }
 
-    // ── 5. QR CODE & FOOTER ──────────────────────────────────────────────
+    // QR Code
     bytes += generator.feed(1);
     try {
-      final String qrData = 'INVOICE:$invoiceNumber|DATE:$invoiceDate|TOTAL:$total|TRN:$trn';
+      final String qrData = 'INVOICE:$invoiceNumber|DATE:$dateDisplay|TOTAL:$total|TRN:$trn';
       bytes += generator.qrcode(qrData, align: PosAlign.center);
     } catch (_) {}
-
-    bytes += generator.feed(1);
-    bytes += generator.text(
-      'Thank you for your visit!',
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    );
-    bytes += generator.text(
-      'Drive Safe & Have a Great Day',
-      styles: const PosStyles(align: PosAlign.center),
-    );
 
     bytes += generator.feed(3);
     bytes += generator.cut();
@@ -322,7 +322,7 @@ class ThermalReceiptGenerator {
 
   static Future<List<int>> generateTestReceipt({
     required String paperSize,
-    String companyName = 'Mobiz Autocare Pro',
+    String companyName = 'AL BAB AL ABYAD AUTO SERVICES L.L.C',
   }) async {
     final profile = await CapabilityProfile.load();
     final bool is2Inch = paperSize == '2inch';
@@ -333,54 +333,74 @@ class ThermalReceiptGenerator {
 
     final int lineLength = is2Inch ? 32 : (is4Inch ? 64 : 48);
     final String divider = '-' * lineLength;
-    final String doubleDivider = '=' * lineLength;
 
     bytes += generator.reset();
     bytes += generator.text(
       companyName.toUpperCase(),
-      styles: PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: is2Inch ? PosTextSize.size1 : PosTextSize.size2,
-      ),
-    );
-    bytes += generator.text(
-      'BLUETOOTH PRINTER TEST',
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
     bytes += generator.text(
-      'Paper Size: ${is2Inch ? "2 Inch (58mm)" : (is4Inch ? "4 Inch (100mm)" : "3 Inch (80mm)")}',
+      'TRN: 104092571900003',
       styles: const PosStyles(align: PosAlign.center),
     );
-    bytes += generator.text(doubleDivider, styles: const PosStyles(align: PosAlign.center));
-
-    bytes += generator.row([
-      PosColumn(text: 'Item Name', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
-      PosColumn(text: 'Amount', width: 4, styles: const PosStyles(align: PosAlign.right, bold: true)),
-    ]);
-    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
-
-    bytes += generator.row([
-      PosColumn(text: 'Car Wash', width: 6),
-      PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.center)),
-      PosColumn(text: '50.00', width: 4, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    bytes += generator.row([
-      PosColumn(text: 'Interior Vacuum', width: 6),
-      PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.center)),
-      PosColumn(text: '30.00', width: 4, styles: const PosStyles(align: PosAlign.right)),
-    ]);
-    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
-
-    bytes += generator.row([
-      PosColumn(text: 'TOTAL TEST:', width: 6, styles: const PosStyles(bold: true)),
-      PosColumn(text: '80.00', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
-    ]);
-    bytes += generator.text(doubleDivider, styles: const PosStyles(align: PosAlign.center));
-
     bytes += generator.feed(1);
-    bytes += generator.text('SUCCESS: Printer Connected & Working!', styles: const PosStyles(align: PosAlign.center, bold: true));
+
+    bytes += generator.row([
+      PosColumn(text: 'TAX INVOICE', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Industrial Area 4', width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: '# TEST-001', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Sharjah, UAE', width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.feed(1);
+
+    bytes += generator.text('Date : 13/11/2026');
+    bytes += generator.text('To : 29330 MAZDA');
+    bytes += generator.text('Phone : 29930 MAZDA');
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.row([
+      PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Qty', width: 2, styles: const PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(text: 'Price', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      PosColumn(text: 'Total', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.row([
+      PosColumn(text: 'BODY WASH-SALOON', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.center)),
+      PosColumn(text: '25.00', width: 2, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(text: '25.00', width: 2, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.row([
+      PosColumn(text: '(Tax Included) Sub Total', width: 8),
+      PosColumn(text: '25.00', width: 4, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'VAT@5%', width: 8),
+      PosColumn(text: '1.19', width: 4, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.row([
+      PosColumn(text: 'Total', width: 4, styles: PosStyles(bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2)),
+      PosColumn(
+        text: 'AED 25.00',
+        width: 8,
+        styles: PosStyles(align: PosAlign.right, bold: true, height: is2Inch ? PosTextSize.size1 : PosTextSize.size2),
+      ),
+    ]);
+    bytes += generator.text(divider, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.row([
+      PosColumn(text: 'Total Paid', width: 6),
+      PosColumn(text: 'AED 25.00', width: 6, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+
     bytes += generator.feed(3);
     bytes += generator.cut();
 
