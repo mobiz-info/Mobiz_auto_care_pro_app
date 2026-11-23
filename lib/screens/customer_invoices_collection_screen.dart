@@ -27,7 +27,20 @@ class CustomerInvoicesCollectionScreen extends StatelessWidget {
   final ValueNotifier<bool> _collectingNotifier = ValueNotifier(false);
   final ValueNotifier<String> _paymentModeNotifier =
       ValueNotifier(CountryConfig.isUAE ? 'cash' : 'digital_payments');
+  final ValueNotifier<DateTime> _collectionDateNotifier =
+      ValueNotifier(DateTime.now());
   final TextEditingController _amountController = TextEditingController();
+
+  String _formatDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _displayDate(BuildContext context, DateTime d) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${d.day.toString().padLeft(2, '0')} ${context.tr(months[d.month - 1])} ${d.year}';
+  }
 
   Future<void> _fetchCustomerInvoices(BuildContext context) async {
     _loadingNotifier.value = true;
@@ -92,6 +105,7 @@ class CustomerInvoicesCollectionScreen extends StatelessWidget {
         amount: amt,
         paymentMode: _paymentModeNotifier.value,
         token: token,
+        collectionDate: _formatDate(_collectionDateNotifier.value),
       );
 
       if (res['success'] == true) {
@@ -401,6 +415,80 @@ class CustomerInvoicesCollectionScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Collection Date Picker
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _collectionDateNotifier,
+                  builder: (context, collectionDate, _) {
+                    return InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: collectionDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          _collectionDateNotifier.value = picked;
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFf8fafc),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFd1d5db)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 18, color: Color(0xFF000080)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    context.tr('Collection Date'),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF64748b),
+                                    ),
+                                  ),
+                                  Text(
+                                    _displayDate(context, collectionDate),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1e293b),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF000080).withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                context.tr('Change'),
+                                style: GoogleFonts.inter(
+                                  fontSize: 11.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF000080),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
                 Row(
                   children: [
                     Expanded(

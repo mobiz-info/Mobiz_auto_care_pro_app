@@ -30,6 +30,8 @@ class _BillsScreenState extends State<BillsScreen> {
   late final ValueNotifier<DateTime?> _fromDateNotifier;
   late final ValueNotifier<DateTime?> _toDateNotifier;
   late final ValueNotifier<String?> _paymentModeNotifier;
+  final TextEditingController _searchController = TextEditingController();
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier('');
 
   @override
   void initState() {
@@ -39,6 +41,10 @@ class _BillsScreenState extends State<BillsScreen> {
     _fromDateNotifier = ValueNotifier(today);
     _toDateNotifier = ValueNotifier(today);
     _paymentModeNotifier = ValueNotifier(null);
+
+    _searchController.addListener(() {
+      _searchQueryNotifier.value = _searchController.text;
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchInvoices(context);
@@ -50,6 +56,8 @@ class _BillsScreenState extends State<BillsScreen> {
     _fromDateNotifier.dispose();
     _toDateNotifier.dispose();
     _paymentModeNotifier.dispose();
+    _searchController.dispose();
+    _searchQueryNotifier.dispose();
     super.dispose();
   }
 
@@ -97,11 +105,13 @@ class _BillsScreenState extends State<BillsScreen> {
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
 
+    final query = _searchController.text.trim();
     context.read<InvoiceProvider>().fetchInvoices(
       token,
       fromDate: _fromDateNotifier.value != null ? _formatDate(_fromDateNotifier.value!) : null,
       toDate: _toDateNotifier.value != null ? _formatDate(_toDateNotifier.value!) : null,
       paymentMode: _paymentModeNotifier.value,
+      search: query.isNotEmpty ? query : null,
     );
   }
 
@@ -906,103 +916,183 @@ class _BillsScreenState extends State<BillsScreen> {
     final errorMessage = invoiceProvider.listErrorMessage ?? '';
     final symbol = currencySymbol(context);
 
-    final totalAmount = invoices.fold<double>(
-      0, (sum, inv) => sum + (double.tryParse(inv['total'].toString()) ?? 0));
+    return ValueListenableBuilder<String>(
+      valueListenable: _searchQueryNotifier,
+      builder: (context, query, _) {
+        final q = query.trim().toLowerCase();
+        final filteredInvoices = q.isEmpty
+            ? invoices
+            : invoices.where((inv) {
+                final invNum =
+                    (inv['invoice_number'] ?? '').toString().toLowerCase();
+                final custMap =
+                    inv['customer'] is Map ? (inv['customer'] as Map) : null;
+                final custName =
+                    (custMap?['name'] ?? '').toString().toLowerCase();
+                final custPhone =
+                    (custMap?['phone'] ?? '').toString().toLowerCase();
+                final vehMap =
+                    inv['vehicle'] is Map ? (inv['vehicle'] as Map) : null;
+                final vehNum =
+                    (vehMap?['number'] ?? '').toString().toLowerCase();
+                final vehModel =
+                    (vehMap?['model'] ?? '').toString().toLowerCase();
+                return invNum.contains(q) ||
+                    custName.contains(q) ||
+                    custPhone.contains(q) ||
+                    vehNum.contains(q) ||
+                    vehModel.contains(q);
+              }).toList();
 
-    return Scaffold(
-      backgroundColor: Color(0xFFF1F5F9),
-      appBar: AppBar(
-        title: Text(context.tr('Bills'), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-        backgroundColor: Color(0xFF000080),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(icon: Icon(Icons.refresh), onPressed: () => _fetchInvoices(context)),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Date Filter
-          Container(
-            color: const Color(0xFF000080),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-            child: Column(
-              children: [
-                Row(
+        final totalAmount = filteredInvoices.fold<double>(
+            0,
+            (sum, inv) =>
+                sum + (double.tryParse(inv['total'].toString()) ?? 0));
+
+        return Scaffold(
+          backgroundColor: Color(0xFFF1F5F9),
+          appBar: AppBar(
+            title: Text(context.tr('Bills'),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+            backgroundColor: Color(0xFF000080),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            actions: [
+              IconButton(
+                  icon: Icon(Icons.refresh),
+                  onPressed: () => _fetchInvoices(context)),
+            ],
+          ),
+          body: Column(
+            children: [
+              // Date & Search Filter Header
+              Container(
+                color: const Color(0xFF000080),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: ValueListenableBuilder<DateTime?>(
-                        valueListenable: _fromDateNotifier,
-                        builder: (context, fromDate, child) {
-                          return _datePicker(context, label: 'From', date: fromDate, isFrom: true);
-                        },
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ValueListenableBuilder<DateTime?>(
+                            valueListenable: _fromDateNotifier,
+                            builder: (context, fromDate, child) {
+                              return _datePicker(context,
+                                  label: 'From', date: fromDate, isFrom: true);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ValueListenableBuilder<DateTime?>(
+                            valueListenable: _toDateNotifier,
+                            builder: (context, toDate, child) {
+                              return _datePicker(context,
+                                  label: 'To', date: toDate, isFrom: false);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () => _fetchInvoices(context),
+                          child: Container(
+                            height: 48,
+                            width: 48,
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10)),
+                            child:
+                                Icon(Icons.refresh, color: Color(0xFF000080)),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ValueListenableBuilder<DateTime?>(
-                        valueListenable: _toDateNotifier,
-                        builder: (context, toDate, child) {
-                          return _datePicker(context, label: 'To', date: toDate, isFrom: false);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    GestureDetector(
-                      onTap: () => _fetchInvoices(context),
-                      child: Container(
-                        height: 48, width: 48,
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.search, color: Color(0xFF000080)),
-                      ),
-                    ),
+                    const SizedBox(height: 12),
+                    _paymentModeDropdown(context),
+                    const SizedBox(height: 12),
+                    _searchBar(context),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _paymentModeDropdown(context),
-              ],
-            ),
-          ),
-
-          // Summary bar
-          if (!isLoading && invoices.isNotEmpty)
-            Container(
-              color: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(children: [
-                    Icon(Icons.receipt_long, size: 16, color: Colors.grey.shade500),
-                    SizedBox(width: 8),
-                    Text(context.tr('${invoices.length} invoice${invoices.length == 1 ? '' : 's'}'),
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.grey.shade700, fontSize: 13.sp)),
-                  ]),
-                  Text(context.tr('Total: $symbol${totalAmount.toStringAsFixed(2)}'),
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Color(0xFF000080), fontSize: 14.sp)),
-                ],
               ),
-            ),
 
-          // List
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : errorMessage.isNotEmpty
-                    ? _buildError(context, errorMessage)
-                    : invoices.isEmpty
-                        ? _buildEmpty(context)
-                        : RefreshIndicator(
-                            onRefresh: () => _fetchInvoices(context),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: invoices.length,
-                              itemBuilder: (ctx, i) => _invoiceCard(ctx, invoices[i]),
-                            ),
-                          ),
+              // Summary bar
+              if (!isLoading && filteredInvoices.isNotEmpty)
+                Container(
+                  color: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(children: [
+                        Icon(Icons.receipt_long,
+                            size: 16, color: Colors.grey.shade500),
+                        SizedBox(width: 8),
+                        Text(
+                            context.tr(
+                                '${filteredInvoices.length} invoice${filteredInvoices.length == 1 ? '' : 's'}'),
+                            style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                                fontSize: 13.sp)),
+                      ]),
+                      Text(
+                          context.tr(
+                              'Total: $symbol${totalAmount.toStringAsFixed(2)}'),
+                          style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF000080),
+                              fontSize: 14.sp)),
+                    ],
+                  ),
+                ),
+
+              // List
+              Expanded(
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : errorMessage.isNotEmpty
+                        ? _buildError(context, errorMessage)
+                        : filteredInvoices.isEmpty
+                            ? (q.isNotEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.search_off,
+                                              size: 48,
+                                              color: Colors.grey.shade400),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            context.tr(
+                                                'No bills match "$query"'),
+                                            textAlign: TextAlign.center,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 14.sp,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : _buildEmpty(context))
+                            : RefreshIndicator(
+                                onRefresh: () => _fetchInvoices(context),
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(16),
+                                  itemCount: filteredInvoices.length,
+                                  itemBuilder: (ctx, i) =>
+                                      _invoiceCard(ctx, filteredInvoices[i]),
+                                ),
+                              ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1399,6 +1489,48 @@ class _BillsScreenState extends State<BillsScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _searchBar(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: GoogleFonts.inter(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF1e293b),
+        ),
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => _fetchInvoices(context),
+        decoration: InputDecoration(
+          hintText: context.tr('Search vehicle, customer, invoice #...'),
+          hintStyle: GoogleFonts.inter(
+            fontSize: 12.sp,
+            color: Colors.grey.shade400,
+          ),
+          prefixIcon: const Icon(Icons.search, color: Color(0xFF000080), size: 20),
+          suffixIcon: ValueListenableBuilder<String>(
+            valueListenable: _searchQueryNotifier,
+            builder: (context, query, _) {
+              if (query.isEmpty) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                onPressed: () {
+                  _searchController.clear();
+                  _fetchInvoices(context);
+                },
+              );
+            },
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+      ),
     );
   }
 }

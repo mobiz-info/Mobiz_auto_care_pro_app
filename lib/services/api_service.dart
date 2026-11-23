@@ -868,6 +868,7 @@ class ApiService {
     String? fromDate,
     String? toDate,
     String? paymentMode,
+    String? search,
   }) async {
     String url = '$baseUrl/invoice/list/';
     final params = <String, String>{};
@@ -877,6 +878,8 @@ class ApiService {
     if (toDate != null) params['to_date'] = toDate;
     if (paymentMode != null && paymentMode.isNotEmpty)
       params['payment_mode'] = paymentMode;
+    if (search != null && search.isNotEmpty)
+      params['search'] = search;
     if (params.isNotEmpty) {
       url += '?' + params.entries.map((e) => '${e.key}=${e.value}').join('&');
     }
@@ -1036,14 +1039,26 @@ class ApiService {
     required String invoiceId,
     required double amount,
     required String token,
+    String? paymentMode,
+    String? collectionDate,
   }) async {
+    final body = <String, dynamic>{
+      'invoice_id': invoiceId,
+      'amount': amount,
+    };
+    if (paymentMode != null && paymentMode.isNotEmpty) {
+      body['payment_mode'] = paymentMode;
+    }
+    if (collectionDate != null && collectionDate.isNotEmpty) {
+      body['collection_date'] = collectionDate;
+    }
     final response = await http.post(
       Uri.parse('$baseUrl/outstanding/collect/'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({'invoice_id': invoiceId, 'amount': amount}),
+      body: jsonEncode(body),
     );
     if (response.statusCode == 200 ||
         response.statusCode == 400 ||
@@ -1089,18 +1104,23 @@ class ApiService {
     required double amount,
     required String paymentMode,
     required String token,
+    String? collectionDate,
   }) async {
+    final body = <String, dynamic>{
+      'customer_id': customerId,
+      'amount': amount,
+      'payment_mode': paymentMode,
+    };
+    if (collectionDate != null && collectionDate.isNotEmpty) {
+      body['collection_date'] = collectionDate;
+    }
     final response = await http.post(
       Uri.parse('$baseUrl/outstanding/customer-collect/'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'customer_id': customerId,
-        'amount': amount,
-        'payment_mode': paymentMode,
-      }),
+      body: jsonEncode(body),
     );
     if (response.statusCode == 200 ||
         response.statusCode == 400 ||

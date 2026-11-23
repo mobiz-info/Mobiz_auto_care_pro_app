@@ -105,6 +105,7 @@ class InvoiceProvider extends ChangeNotifier {
         fromDate: fromDate,
         toDate: toDate,
         paymentMode: paymentMode,
+        search: search,
       );
 
       if (res['success'] == true) {
@@ -164,12 +165,15 @@ class InvoiceProvider extends ChangeNotifier {
     required String invoiceId,
     required double amount,
     String paymentMode = 'cash',
+    String? collectionDate,
   }) async {
     try {
       final res = await ApiService.collectPayment(
         token: token,
         invoiceId: invoiceId,
         amount: amount,
+        paymentMode: paymentMode,
+        collectionDate: collectionDate,
       );
       if (res['success'] == true) {
         // Automatically refresh invoice list if available
