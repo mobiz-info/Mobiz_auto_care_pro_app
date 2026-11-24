@@ -409,11 +409,11 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                           if (val != null) _onPaperSizeChanged(val);
                         },
                         title: Text(
-                          context.tr('2 Inch (58mm) — Compact Handheld POS'),
+                          context.tr('2 Inch (58mm)'),
                           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.sp),
                         ),
                         subtitle: Text(
-                          context.tr('Small handheld mobile Bluetooth printer format (384 dots)'),
+                          context.tr(''),
                           style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade500),
                         ),
                         activeColor: const Color(0xFF000080),
@@ -430,7 +430,7 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.sp),
                         ),
                         subtitle: Text(
-                          context.tr('Most common portable & desktop receipt printer format'),
+                          context.tr(''),
                           style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade500),
                         ),
                         activeColor: const Color(0xFF000080),
@@ -443,11 +443,11 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                           if (val != null) _onPaperSizeChanged(val);
                         },
                         title: Text(
-                          context.tr('4 Inch (100mm / 112mm) — Wide Format'),
+                          context.tr(''),
                           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.sp),
                         ),
                         subtitle: Text(
-                          context.tr('Extra wide paper with detailed rate & discount columns'),
+                          context.tr(''),
                           style: GoogleFonts.inter(fontSize: 11.sp, color: Colors.grey.shade500),
                         ),
                         activeColor: const Color(0xFF000080),
@@ -505,7 +505,7 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
                   ),
                 ),
-                SizedBox(height: 24.h),
+                SizedBox(height: 20.h),
 
                 // ── 6. Paired Bluetooth Devices ──────────────────────────────
                 Row(
