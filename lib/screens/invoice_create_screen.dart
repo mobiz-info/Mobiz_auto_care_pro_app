@@ -3605,8 +3605,18 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       }
       final validityMonths = row.smokeTestPeriodMonths;
 
+      final int days;
+      if (validityMonths == 3) {
+        days = 90;
+      } else if (validityMonths == 6) {
+        days = 180;
+      } else if (validityMonths == 36) {
+        days = 1095;
+      } else {
+        days = 365;
+      }
       final nextDate = DateTime.now().add(
-        Duration(days: validityMonths == 6 ? 180 : 365),
+        Duration(days: days),
       );
       final nextDateStr =
           "${nextDate.day.toString().padLeft(2, '0')}-${nextDate.month.toString().padLeft(2, '0')}-${nextDate.year}";
@@ -3714,7 +3724,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
-                      value: row.smokeTestPeriodMonths == 6 ? 6 : 12,
+                      value: [3, 6, 12, 36].contains(row.smokeTestPeriodMonths)
+                          ? row.smokeTestPeriodMonths
+                          : 12,
                       dropdownColor: Colors.purple.shade900,
                       icon: const Icon(
                         Icons.arrow_drop_down,
@@ -3727,6 +3739,13 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       ),
                       items: [
                         DropdownMenuItem<int>(
+                          value: 3,
+                          child: Text(
+                            context.tr('3 Months'),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        DropdownMenuItem<int>(
                           value: 6,
                           child: Text(
                             context.tr('6 Months'),
@@ -3737,6 +3756,13 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                           value: 12,
                           child: Text(
                             context.tr('1 Year'),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        DropdownMenuItem<int>(
+                          value: 36,
+                          child: Text(
+                            context.tr('3 Years'),
                             style: const TextStyle(color: Colors.white),
                           ),
                         ),
