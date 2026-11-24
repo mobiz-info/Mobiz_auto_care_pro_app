@@ -805,6 +805,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final ValueNotifier<String?> _selectedSupplierIdNotifier = ValueNotifier(null);
   final ValueNotifier<bool> _hasSupplierNotifier = ValueNotifier(false);
 
+  // Staff Salary / Advance specific notifiers
+  final ValueNotifier<String?> _selectedStaffIdNotifier = ValueNotifier(null);
+  final ValueNotifier<String> _salaryPaymentTypeNotifier = ValueNotifier('SALARY'); // 'SALARY' or 'ADVANCE'
+  final ValueNotifier<DateTime> _selectedSalaryMonthNotifier = ValueNotifier(
+    DateTime(DateTime.now().year, DateTime.now().month, 1),
+  );
+
   final TextEditingController _expenseNameController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _remarkController = TextEditingController();
@@ -836,6 +843,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     _selectedBranchIdNotifier.dispose();
     _selectedSupplierIdNotifier.dispose();
     _hasSupplierNotifier.dispose();
+    _selectedStaffIdNotifier.dispose();
+    _salaryPaymentTypeNotifier.dispose();
+    _selectedSalaryMonthNotifier.dispose();
     _expenseNameController.dispose();
     _amountController.dispose();
     _remarkController.dispose();
@@ -877,9 +887,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         }
       } catch (_) {}
 
+      // Keep all valid heads including Salary & Wages and Salary Advance
       _expenseHeadsNotifier.value = expenseProvider.expenseHeads.where((head) {
         final name = (head['name'] ?? '').toString().trim().toLowerCase();
-        return name != 'salary' && name != 'salary advance';
+        return name != 'purchase';
       }).toList();
       _suppliersNotifier.value = expenseProvider.suppliers;
       _stocksNotifier.value = inventoryProvider.stockItems;
@@ -922,6 +933,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     _expenseNameController.clear();
     _isCustomExpenseNameNotifier.value = false;
     _headItemsNotifier.value = [];
+    _selectedStaffIdNotifier.value = null;
+
+    final headName = (head['name'] ?? '').toString().toLowerCase();
+    if (_isSalaryWagesHead(head)) {
+      if (headName.contains('advance')) {
+        _salaryPaymentTypeNotifier.value = 'ADVANCE';
+      } else {
+        _salaryPaymentTypeNotifier.value = 'SALARY';
+      }
+      return;
+    }
+
     final headId = head['id']?.toString();
     if (headId == null) return;
 
@@ -943,13 +966,165 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   bool _isSalaryWagesHead(Map<String, dynamic>? head) {
-    final name = (head?['name'] ?? '')
+    if (head == null) return false;
+    final name = (head['name'] ?? '')
         .toString()
         .trim()
         .toLowerCase()
         .replaceAll('&', 'and')
         .replaceAll(RegExp(r'\s+'), ' ');
-    return name == 'salary and wages';
+    return name.contains('salary') || name.contains('wages');
+  }
+
+  Future<void> _pickSalaryMonth(BuildContext context) async {
+    final current = _selectedSalaryMonthNotifier.value;
+    int selectedYear = current.year;
+    int selectedMonth = current.month;
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final monthNames = [
+              'January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        context.tr('Select Salary Month'),
+                        style: GoogleFonts.inter(
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF000080),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: () {
+                              setModalState(() {
+                                selectedYear--;
+                              });
+                            },
+                          ),
+                          Text(
+                            '$selectedYear',
+                            style: GoogleFonts.inter(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: () {
+                              setModalState(() {
+                                selectedYear++;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: List.generate(12, (index) {
+                      final m = index + 1;
+                      final isSel = selectedMonth == m;
+                      return SizedBox(
+                        width: (MediaQuery.of(context).size.width - 70) / 3,
+                        child: ChoiceChip(
+                          label: Center(
+                            child: Text(
+                              monthNames[index],
+                              style: GoogleFonts.inter(
+                                fontSize: 13.sp,
+                                fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                color: isSel ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          selected: isSel,
+                          selectedColor: const Color(0xFF000080),
+                          onSelected: (_) {
+                            setModalState(() {
+                              selectedMonth = m;
+                            });
+                            _selectedSalaryMonthNotifier.value = DateTime(selectedYear, selectedMonth, 1);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildChoiceChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+    required IconData icon,
+  }) {
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF000080) : const Color(0xFFFAFAFA),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF000080) : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : Colors.black87,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? Colors.white : Colors.black87,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showExpenseHeadSelector() {
@@ -1024,6 +1199,24 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final paidAmountStr = _paidAmountController.text.trim();
     final paidAmount = (hasSupplier && paidAmountStr.isNotEmpty) ? double.tryParse(paidAmountStr) : amount;
 
+    final isStaffExpense = _isSalaryWagesHead(_selectedExpenseHeadNotifier.value);
+    if (isStaffExpense) {
+      if (_selectedStaffIdNotifier.value == null || _selectedStaffIdNotifier.value!.isEmpty) {
+        final found = _staffsNotifier.value.firstWhere(
+          (s) => (s['name'] ?? '').toString().trim().toLowerCase() == expenseName.toLowerCase(),
+          orElse: () => null,
+        );
+        if (found != null) {
+          _selectedStaffIdNotifier.value = found['id']?.toString();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr('Please select a valid staff member'))),
+          );
+          return;
+        }
+      }
+    }
+
     final payload = <String, dynamic>{
       'expense_head_id': _selectedExpenseHeadNotifier.value!['id'].toString(),
       'expense_name': expenseName,
@@ -1035,6 +1228,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       'paid_amount': paidAmount,
       'remarks': _remarkController.text.trim(),
     };
+
+    if (isStaffExpense) {
+      payload['staff_id'] = _selectedStaffIdNotifier.value;
+      payload['salary_payment_type'] = _salaryPaymentTypeNotifier.value;
+      payload['salary_month'] = DateFormat('yyyy-MM').format(_selectedSalaryMonthNotifier.value);
+    }
 
     _isSavingNotifier.value = true;
     try {
@@ -1561,6 +1760,147 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Widget _buildExpenseNameField(Map<String, dynamic>? selectedExpenseHead) {
+    if (selectedExpenseHead == null) return const SizedBox.shrink();
+
+    final isStaffExpense = _isSalaryWagesHead(selectedExpenseHead);
+
+    if (isStaffExpense) {
+      return ValueListenableBuilder<List<dynamic>>(
+        valueListenable: _staffsNotifier,
+        builder: (context, allStaffs, child) {
+          return ValueListenableBuilder<String?>(
+            valueListenable: _selectedBranchIdNotifier,
+            builder: (context, selectedBranchId, child) {
+              final branchStaffs = allStaffs.where((s) {
+                if (selectedBranchId == null || selectedBranchId.isEmpty) return true;
+                final bId = s['branch_id']?.toString();
+                return bId == null || bId.isEmpty || bId == selectedBranchId;
+              }).toList();
+
+              if (branchStaffs.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel(context.tr('Select Staff *')),
+                    const SizedBox(height: 6),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFFAFAFA),
+                      ),
+                      child: Text(
+                        context.tr('No staff available for this branch'),
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return ValueListenableBuilder<String?>(
+                valueListenable: _selectedStaffIdNotifier,
+                builder: (context, selectedStaffId, child) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDropdownField(
+                        context,
+                        label: context.tr('Select Staff *'),
+                        icon: Icons.person_outline,
+                        hintText: context.tr('Select Staff Member'),
+                        value: selectedStaffId,
+                        items: branchStaffs.map((s) {
+                          final staff = Map<String, dynamic>.from(s as Map);
+                          final id = staff['id']?.toString();
+                          final name = (staff['name'] ?? '').toString();
+                          final empId = (staff['employee_id'] ?? '').toString();
+                          final designation = (staff['designation'] ?? '').toString();
+                          final sub = [empId, designation].where((x) => x.isNotEmpty).join(' • ');
+                          return DropdownMenuItem<String>(
+                            value: id,
+                            child: Text(
+                              sub.isNotEmpty ? '$name ($sub)' : name,
+                              style: GoogleFonts.inter(fontSize: 14.sp),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          _selectedStaffIdNotifier.value = val;
+                          final match = branchStaffs.firstWhere(
+                            (s) => s['id']?.toString() == val,
+                            orElse: () => null,
+                          );
+                          if (match != null) {
+                            _expenseNameController.text = (match['name'] ?? '').toString();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      // Payment Type Toggle (Salary vs Advance)
+                      ValueListenableBuilder<String>(
+                        valueListenable: _salaryPaymentTypeNotifier,
+                        builder: (context, payType, _) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLabel(context.tr('Payment Type *')),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildChoiceChip(
+                                      label: context.tr('Salary / Wages'),
+                                      isSelected: payType == 'SALARY',
+                                      onSelected: () => _salaryPaymentTypeNotifier.value = 'SALARY',
+                                      icon: Icons.payments_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildChoiceChip(
+                                      label: context.tr('Salary Advance'),
+                                      isSelected: payType == 'ADVANCE',
+                                      onSelected: () => _salaryPaymentTypeNotifier.value = 'ADVANCE',
+                                      icon: Icons.history_edu_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      // Salary Month Picker
+                      ValueListenableBuilder<DateTime>(
+                        valueListenable: _selectedSalaryMonthNotifier,
+                        builder: (context, salaryMonth, _) {
+                          return _buildClickableField(
+                            context,
+                            label: context.tr('Salary Month *'),
+                            icon: Icons.calendar_month_outlined,
+                            value: DateFormat('MMMM yyyy').format(salaryMonth),
+                            onTap: () => _pickSalaryMonth(context),
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    }
+
     return ValueListenableBuilder<bool>(
       valueListenable: _isLoadingHeadItemsNotifier,
       builder: (context, isLoadingItems, child) {
@@ -1602,43 +1942,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             return ValueListenableBuilder<bool>(
               valueListenable: _isCustomExpenseNameNotifier,
               builder: (context, isCustom, child) {
-                final isStaffExpense = _isSalaryWagesHead(selectedExpenseHead);
                 final List<dynamic> stocks = _stocksNotifier.value;
-                final stockNames = isStaffExpense ? <String>[] : stocks.where((s) {
+                final stockNames = stocks.where((s) {
                   final stock = Map<String, dynamic>.from(s as Map);
-                  return stock['expense_head_id']?.toString() == selectedExpenseHead?['id']?.toString();
+                  return stock['expense_head_id']?.toString() == selectedExpenseHead['id']?.toString();
                 }).map((s) => (s['item_name'] ?? '').toString()).where((n) => n.isNotEmpty).toList();
 
                 final combinedSet = <String>{...headItems, ...stockNames};
                 final combinedItems = combinedSet.toList()..sort();
 
-                if (isStaffExpense && combinedItems.isEmpty) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel(context.tr('Select Staff *')),
-                      const SizedBox(height: 6),
-                      InputDecorator(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFFFAFAFA),
-                        ),
-                        child: Text(
-                          context.tr('No staff available for this branch'),
-                          style: GoogleFonts.inter(
-                            fontSize: 14.sp,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-
-                if (combinedItems.isNotEmpty && (isStaffExpense || !isCustom)) {
+                if (combinedItems.isNotEmpty && !isCustom) {
                   final String? currentValue = combinedItems.contains(_expenseNameController.text)
                       ? _expenseNameController.text
                       : null;
@@ -1648,7 +1961,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     children: [
                       _buildDropdownField(
                         context,
-                        label: context.tr(isStaffExpense ? 'Select Staff *' : 'Select Stock / Expense Item *'),
+                        label: context.tr('Select Stock / Expense Item *'),
                         icon: Icons.shopping_bag_outlined,
                         hintText: context.tr('Select Expense Item'),
                         value: currentValue,
@@ -1660,14 +1973,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   style: GoogleFonts.inter(fontSize: 15.sp),
                                 ),
                               )),
-                          if (!isStaffExpense)
-                            DropdownMenuItem<String>(
-                              value: '__CUSTOM__',
-                              child: Text(
-                                '+ ${context.tr("Custom Expense Name")}',
-                                style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
-                              ),
+                          DropdownMenuItem<String>(
+                            value: '__CUSTOM__',
+                            child: Text(
+                              '+ ${context.tr("Custom Expense Name")}',
+                              style: GoogleFonts.inter(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Color(0xFF000080)),
                             ),
+                          ),
                         ],
                         onChanged: (val) {
                           if (val == '__CUSTOM__') {
@@ -1675,9 +1987,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             _isCustomExpenseNameNotifier.value = true;
                           } else {
                             _expenseNameController.text = val ?? '';
-                            if (isStaffExpense) {
-                              _isCustomExpenseNameNotifier.value = false;
-                            }
                           }
                         },
                       ),

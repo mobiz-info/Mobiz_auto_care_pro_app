@@ -28,6 +28,7 @@ import '../config/app_defaults.dart';
 import 'expense_screen.dart';
 import 'supplier_screen.dart';
 import 'staff_leave_screen.dart';
+import 'payslip_screen.dart';
 import 'purchase_request_screen.dart';
 import 'expense_head_screen.dart';
 import 'extras_screen.dart';
@@ -140,6 +141,16 @@ class _MenuScreenState extends State<MenuScreen> {
       'title': 'Purchase Entry',
       'icon': Icons.add_shopping_cart_outlined,
       'color': Color(0xFF2563EB),
+    },
+    {
+      'title': 'Staff Leaves',
+      'icon': Icons.calendar_month_outlined,
+      'color': Color(0xFF10B981),
+    },
+    {
+      'title': 'Payslips',
+      'icon': Icons.payments_outlined,
+      'color': Color(0xFF0F766E),
     },
     /*
     {
@@ -263,6 +274,11 @@ class _MenuScreenState extends State<MenuScreen> {
       'icon': Icons.calendar_month_outlined,
       'color': Color(0xFF10B981),
     },
+    {
+      'title': 'Payslips',
+      'icon': Icons.payments_outlined,
+      'color': Color(0xFF0F766E),
+    },
     /*
     {
       'title': 'Purchase Req',
@@ -356,6 +372,7 @@ class _MenuScreenState extends State<MenuScreen> {
       'Supplier Payables': const SupplierPayablesScreen(),
       'Purchase Entry': const PurchaseInvoiceCreateScreen(),
       'Staff Leaves': const StaffLeaveScreen(),
+      'Payslips': const PayslipScreen(),
       'Purchase Req': const PurchaseRequestScreen(),
       'Purchase': const PurchaseRequestScreen(),
       'Expense Heads': const ExpenseHeadScreen(),
@@ -710,7 +727,7 @@ class _MenuScreenState extends State<MenuScreen> {
                         MaterialPageRoute(builder: (_) => const PurchaseInvoiceCreateScreen()),
                       );
                     }),
-                    if (isCompany)
+                    if (isCompany) ...[
                       _drawerItem(Icons.calendar_month_outlined, 'Staff Leaves', () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -718,6 +735,14 @@ class _MenuScreenState extends State<MenuScreen> {
                           MaterialPageRoute(builder: (_) => const StaffLeaveScreen()),
                         );
                       }),
+                      _drawerItem(Icons.payments_outlined, 'Payslips', () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const PayslipScreen()),
+                        );
+                      }),
+                    ],
                     if (isCompany) ...[
                       _drawerItem(Icons.label_outline, 'Expense Heads', () {
                         Navigator.pop(context);

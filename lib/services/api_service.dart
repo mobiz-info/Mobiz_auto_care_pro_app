@@ -1807,6 +1807,92 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getStaffPayslips(
+    String token, {
+    int? year,
+    int? month,
+    String? branchId,
+    String? search,
+  }) async {
+    final queryParams = <String, String>{};
+    if (year != null) queryParams['year'] = year.toString();
+    if (month != null) queryParams['month'] = month.toString();
+    if (branchId != null && branchId.isNotEmpty) queryParams['branch_id'] = branchId;
+    if (search != null && search.isNotEmpty) queryParams['search'] = search;
+
+    final uri = Uri.parse('$baseUrl/staff/payslips/').replace(
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
+    final response = await http.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load payslips.');
+    }
+  }
+
+  static Future<List<int>> downloadPayslipPdf(
+    String token,
+    String staffId,
+    int year,
+    int month,
+  ) async {
+    final uri = Uri.parse(
+      '$baseUrl/staff/payslip/pdf/?staff_id=$staffId&year=$year&month=$month',
+    );
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return response.bodyBytes;
+    } else {
+      throw Exception('Failed to download payslip PDF.');
+    }
+  }
+
+  static Future<Map<String, dynamic>> recordPayslipPayment(
+    String token,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/staff/payslip/pay/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+    try {
+      final res = jsonDecode(response.body);
+      if (res is Map<String, dynamic>) return res;
+    } catch (_) {}
+    throw Exception('Failed to record payslip payment.');
+  }
+
+  static Future<Map<String, dynamic>> getBankAccounts(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/bank-accounts/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load bank accounts.');
+    }
+  }
+
   static Future<Map<String, dynamic>> getStockList(String token) async {
     final response = await http.get(
       Uri.parse('$baseUrl/stock/list/'),
