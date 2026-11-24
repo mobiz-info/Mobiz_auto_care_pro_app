@@ -27,47 +27,6 @@ class _OilItemRow {
   }
 }
 
-class _TyreItemRow {
-  String? selectedBrandId;
-  String? selectedTyreId;
-  final TextEditingController sizeController = TextEditingController();
-  final TextEditingController qtyController = TextEditingController(text: '4');
-  final TextEditingController odometerController = TextEditingController();
-  final TextEditingController nextChangeKmController = TextEditingController();
-  double unitPrice = 0.0;
-  int runningKm = 40000;
-
-  _TyreItemRow({
-    this.selectedBrandId,
-    this.selectedTyreId,
-    double initialPrice = 0.0,
-    int initialQty = 4,
-    int initialKm = 40000,
-  }) {
-    qtyController.text = initialQty.toString();
-    unitPrice = initialPrice;
-    runningKm = initialKm;
-    odometerController.addListener(_onOdometerChanged);
-  }
-
-  void _onOdometerChanged() {
-    final odo = int.tryParse(odometerController.text) ?? 0;
-    if (odo > 0) {
-      nextChangeKmController.text = (odo + runningKm).toString();
-    }
-  }
-
-  int get quantity => int.tryParse(qtyController.text) ?? 1;
-  double get lineTotal => unitPrice * quantity;
-
-  void dispose() {
-    sizeController.dispose();
-    qtyController.dispose();
-    odometerController.removeListener(_onOdometerChanged);
-    odometerController.dispose();
-    nextChangeKmController.dispose();
-  }
-}
 
 // ── Battery itemized row for battery replacement ──────────────────────────────
 class _BatteryItemRow {
@@ -199,15 +158,9 @@ class _ServiceRow {
     return itemsCharge + oilFilterPrice;
   }
 
-  // Tyre Change (Itemized List - defaults to 1 item)
-  final List<_TyreItemRow> tyreItems = [_TyreItemRow(initialQty: 4)];
+  // Tyre Change
   final TextEditingController nextTyreChangeKmController =
       TextEditingController();
-
-  double get tyreTotalCharge {
-    if (serviceCategory != 'tyre_change') return 0.0;
-    return tyreItems.fold(0.0, (sum, item) => sum + item.lineTotal);
-  }
 
   // Battery Change (Itemized List)
   final List<_BatteryItemRow> batteryItems = [];
@@ -363,22 +316,15 @@ class _ServiceRow {
         final runKm = selectedOilFilterRunKm ?? firstOilRunKm ?? 5000;
         nextOilChangeKmController.text = (odo + runKm).toString();
       }
-      if (serviceCategory == 'tyre_change' &&
-          nextTyreChangeKmController.text.isEmpty) {
-        // Default to +40000 km
+      if (serviceCategory == 'tyre_change') {
         nextTyreChangeKmController.text = (odo + 40000).toString();
       }
     }
   }
 
   double get rate {
-    if (serviceCategory != 'tyre_change' &&
-        serviceCategory != 'battery_change' &&
-        serviceCategory != 'battery' &&
-        !serviceName.toLowerCase().contains('battery')) {
-      final custom = double.tryParse(customRateController.text);
-      if (custom != null && custom >= 0) return custom;
-    }
+    final custom = double.tryParse(customRateController.text);
+    if (custom != null && custom >= 0) return custom;
     return (service['rate'] as num?)?.toDouble() ?? 0.0;
   }
 
@@ -386,8 +332,6 @@ class _ServiceRow {
     double base = rate;
     if (serviceCategory == 'oil_change') {
       base += oilTotalCharge;
-    } else if (serviceCategory == 'tyre_change') {
-      base += tyreTotalCharge;
     } else if (serviceCategory == 'battery_change' ||
         serviceCategory == 'battery' ||
         serviceName.toLowerCase().contains('battery')) {
@@ -418,9 +362,6 @@ class _ServiceRow {
     odometerController.removeListener(_onOdometerChanged);
     odometerController.dispose();
     nextOilChangeKmController.dispose();
-    for (final item in tyreItems) {
-      item.dispose();
-    }
     nextTyreChangeKmController.dispose();
     alignmentNotesController.dispose();
     nextAlignmentKmController.dispose();
@@ -482,9 +423,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   // Oil Products, Oil Filters, Tyre Brands, Tyres, Batteries and Enabled Categories
   List<dynamic> _oilProducts = [];
   List<dynamic> _oilFilters = [];
-  List<dynamic> _tyreBrands = [];
   List<dynamic> _insuranceCompanies = [];
-  List<dynamic> _tyres = [];
   List<dynamic> _batteries = [];
   List<dynamic> _enabledCategories = [];
   String _selectedCategoryFilter = 'all';
@@ -755,15 +694,11 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
       Map<String, dynamic>? oilRes;
       Map<String, dynamic>? filterRes;
-      Map<String, dynamic>? tyreBrandRes;
-      Map<String, dynamic>? tyresListRes;
       Map<String, dynamic>? batteryRes;
       Map<String, dynamic>? insuranceCompaniesRes;
       try {
         oilRes = await ApiService.getOilProducts(token);
         filterRes = await ApiService.getOilFilters(token);
-        tyreBrandRes = await ApiService.getTyreBrands(token);
-        tyresListRes = await ApiService.getTyres(token);
         batteryRes = await ApiService.getBatteries(token);
         insuranceCompaniesRes = await ApiService.getInsuranceCompanies(token);
       } catch (_) {}
@@ -841,12 +776,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       }
       if (filterRes != null && filterRes['success'] == true) {
         _oilFilters = filterRes['oil_filters'] ?? [];
-      }
-      if (tyreBrandRes != null && tyreBrandRes['success'] == true) {
-        _tyreBrands = tyreBrandRes['tyre_brands'] ?? [];
-      }
-      if (tyresListRes != null && tyresListRes['success'] == true) {
-        _tyres = tyresListRes['tyres'] ?? [];
       }
       if (batteryRes != null && batteryRes['success'] == true) {
         _batteries = batteryRes['batteries'] ?? [];
@@ -1361,6 +1290,15 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       _rows.removeAt(idx);
     } else {
       final row = _ServiceRow(service: svc);
+      final currentOdo = widget.vehicle['current_odometer_km'] ??
+          widget.vehicle['odometer'] ??
+          widget.vehicle['odometer_km'];
+      if (currentOdo != null &&
+          currentOdo.toString().isNotEmpty &&
+          currentOdo.toString() != '0') {
+        row.odometerController.text = currentOdo.toString();
+        row._onOdometerChanged();
+      }
       row.discountController.addListener(() {
         _syncAmountCollected();
         _updateUi();
@@ -1369,6 +1307,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         _syncAmountCollected();
         _updateUi();
       });
+      row.odometerController.addListener(_updateUi);
+      row.nextOilChangeKmController.addListener(_updateUi);
+      row.nextTyreChangeKmController.addListener(_updateUi);
       _rows.insert(0, row);
       _loadSchemesForRow(row);
     }
@@ -1589,6 +1530,32 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           return;
         }
       }
+
+      // Validation for Tyre Change details
+      if (row.serviceCategory == 'tyre_change') {
+        final odoStr = row.odometerController.text.trim();
+        final nextKmStr = row.nextTyreChangeKmController.text.trim();
+        if (odoStr.isEmpty ||
+            int.tryParse(odoStr) == null ||
+            int.tryParse(odoStr)! <= 0) {
+          _snack(
+            context.tr('Please enter Current Odometer (KM) for Tyre Service'),
+            isError: true,
+          );
+          return;
+        }
+        if (nextKmStr.isEmpty ||
+            int.tryParse(nextKmStr) == null ||
+            int.tryParse(nextKmStr)! <= 0) {
+          _snack(
+            context.tr(
+              'Please enter Next Tyre Change Due (KM) for Tyre Service',
+            ),
+            isError: true,
+          );
+          return;
+        }
+      }
     }
 
     final token = context.read<AuthProvider>().token;
@@ -1649,43 +1616,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               ),
             };
           } else if (r.serviceCategory == 'tyre_change') {
-            final mappedItems = r.tyreItems.map((item) {
-              final tyreObj = _tyres.firstWhere(
-                (t) => t['id'] == item.selectedTyreId,
-                orElse: () => {},
-              );
-              final brandObj = _tyreBrands.firstWhere(
-                (b) => b['id'] == item.selectedBrandId,
-                orElse: () => {},
-              );
-              return {
-                'tyre_brand_id': item.selectedBrandId,
-                'tyre_id': item.selectedTyreId,
-                'brand': tyreObj['tyre_brand_name'] ?? brandObj['brand'] ?? '',
-                'name': tyreObj['name'] ?? '',
-                'size': item.sizeController.text.trim().isNotEmpty
-                    ? item.sizeController.text.trim()
-                    : (tyreObj['size'] ?? ''),
-                'quantity': item.quantity,
-                'unit_price': item.unitPrice,
-                'line_total': item.lineTotal,
-                'odometer_at_service': int.tryParse(
-                  item.odometerController.text,
-                ),
-                'next_tyre_change_km': int.tryParse(
-                  item.nextChangeKmController.text,
-                ),
-              };
-            }).toList();
-
             detail = {
               'service_category': 'tyre_change',
-              'tyre_items': mappedItems,
-              'total_tyres_count': r.tyreItems.fold<int>(
-                0,
-                (sum, item) => sum + item.quantity,
-              ),
-              'total_tyre_charge': r.tyreTotalCharge,
               'odometer_at_service': int.tryParse(r.odometerController.text),
               'next_tyre_change_km': int.tryParse(
                 r.nextTyreChangeKmController.text,
@@ -2405,10 +2337,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         .toLowerCase()
         .trim();
 
-    // Filter services based on priced status & wheel_type matching for wheel alignment
+    // Filter services based on wheel_type matching for wheel alignment
     final allPriced = _allServices.where((svc) {
-      if (svc['has_price'] != true) return false;
-
       final slug = (svc['service_type_slug'] ?? '').toString();
       if (slug == 'wheel_alignment') {
         final name = (svc['name'] ?? '').toString().toLowerCase();
@@ -2573,12 +2503,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               children: pricedServices.map((svc) {
                 final id = svc['id']?.toString() ?? '';
                 final name = svc['name'] as String;
-                final rate = (svc['rate'] as num).toDouble();
+                final rate = (svc['rate'] as num?)?.toDouble() ?? 0.0;
                 final isSelected = _isServiceSelected(id);
-                final hasPrice = svc['has_price'] == true;
+                final hasPrice = svc['has_price'] == true && rate > 0;
 
                 return GestureDetector(
-                  onTap: hasPrice ? () => _toggleService(svc) : null,
+                  onTap: () => _toggleService(svc),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     margin: const EdgeInsets.only(bottom: 8),
@@ -2630,9 +2560,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                                 style: GoogleFonts.inter(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 14.sp,
-                                  color: hasPrice
-                                      ? Color(0xFF1e293b)
-                                      : Colors.grey,
+                                  color: const Color(0xFF1e293b),
                                 ),
                               ),
                               if (svc['service_type'] != null)
@@ -2653,15 +2581,17 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
+                              color: const Color(0xFF000080).withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.orange.shade200),
+                              border: Border.all(
+                                color: const Color(0xFF000080).withValues(alpha: 0.2),
+                              ),
                             ),
                             child: Text(
-                              context.tr('No price'),
+                              context.tr('Enter price'),
                               style: GoogleFonts.inter(
                                 fontSize: 10.sp,
-                                color: Colors.orange.shade700,
+                                color: const Color(0xFF000080),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -3371,8 +3301,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       );
     } else if (row.serviceCategory == 'tyre_change') {
       return Container(
-        margin: EdgeInsets.only(top: 12),
-        padding: EdgeInsets.all(12),
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.blue.shade50.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(10),
@@ -3382,390 +3312,130 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.disc_full, color: Colors.blue, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      context.tr('Tyre Details'),
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13.sp,
-                        color: Colors.blue.shade900,
-                      ),
-                    ),
-                  ],
-                ),
+                Icon(Icons.edit_note, color: const Color(0xFF000080), size: 20),
+                const SizedBox(width: 8),
                 Text(
-                  '${context.tr("Total Charge")}: $currencySymbol${row.tyreTotalCharge.toStringAsFixed(2)}',
+                  context.tr('Service Price'),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.sp,
+                    color: const Color(0xFF000080),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: row.customRateController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF000080),
+                fontSize: 15.sp,
+              ),
+              decoration: InputDecoration(
+                labelText: context.tr('Service Price'),
+                hintText: 'Enter price',
+                isDense: true,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF000080)),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onChanged: (_) {
+                _syncAmountCollected();
+                _updateUi();
+              },
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(
+                  Icons.tire_repair,
+                  color: const Color(0xFF000080),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  context.tr('Tyre Service Odometer Details'),
                   style: GoogleFonts.inter(
                     fontWeight: FontWeight.bold,
                     fontSize: 13.sp,
-                    color: Colors.green.shade800,
+                    color: const Color(0xFF000080),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
 
-            // Itemized Tyre Rows (1 by default)
-            for (int i = 0; i < row.tyreItems.length; i++) ...[
-              Builder(
-                builder: (context) {
-                  final item = row.tyreItems[i];
-                  final filteredTyres = _tyres.where((t) {
-                    if (item.selectedBrandId == null ||
-                        item.selectedBrandId!.isEmpty)
-                      return true;
-                    return t['tyre_brand_id']?.toString() ==
-                        item.selectedBrandId;
-                  }).toList();
-
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 10),
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.blue.shade100),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 4,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
+            // Odometer & Next Tyre Change (KM) inputs (Required)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: row.odometerController,
+                    keyboardType: TextInputType.number,
+                    style: GoogleFonts.inter(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${context.tr("Tyre Item")} #${i + 1}',
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12.sp,
-                                color: Colors.blue.shade800,
-                              ),
-                            ),
-                            if (row.tyreItems.length > 1)
-                              IconButton(
-                                constraints: BoxConstraints(),
-                                padding: EdgeInsets.zero,
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                  size: 20,
-                                ),
-                                onPressed: () {
-                                  item.dispose();
-                                  row.tyreItems.removeAt(i);
-                                  _syncAmountCollected();
-                                  _updateUi();
-                                },
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Brand & Size Dropdowns
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                value: item.selectedBrandId,
-                                decoration: InputDecoration(
-                                  labelText: context.tr('Select Brand *'),
-                                  labelStyle: TextStyle(fontSize: 12.sp),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                ),
-                                items: [
-                                  DropdownMenuItem<String>(
-                                    value: null,
-                                    child: Text(
-                                      context.tr('-- Select Brand --'),
-                                      style: TextStyle(fontSize: 12.sp),
-                                    ),
-                                  ),
-                                  ..._tyreBrands.map<DropdownMenuItem<String>>((
-                                    b,
-                                  ) {
-                                    return DropdownMenuItem<String>(
-                                      value: b['id']?.toString(),
-                                      child: Text(
-                                        b['brand'] as String,
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (val) {
-                                  item.selectedBrandId = val;
-                                  item.selectedTyreId = null;
-                                  item.unitPrice = 0.0;
-                                  item.sizeController.clear();
-                                  _syncAmountCollected();
-                                  _updateUi();
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                value: item.selectedTyreId,
-                                decoration: InputDecoration(
-                                  labelText: context.tr('Select Size *'),
-                                  labelStyle: TextStyle(fontSize: 12.sp),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                ),
-                                items: [
-                                  DropdownMenuItem<String>(
-                                    value: null,
-                                    child: Text(
-                                      context.tr('-- Select Size --'),
-                                      style: TextStyle(fontSize: 12.sp),
-                                    ),
-                                  ),
-                                  ...filteredTyres.map<
-                                    DropdownMenuItem<String>
-                                  >((t) {
-                                    final sizeStr = t['size']?.toString() ?? '';
-                                    final priceVal =
-                                        (t['price'] as num?)?.toDouble() ?? 0.0;
-                                    final stockVal = t['stock_qty'] ?? 0;
-                                    final label =
-                                        '$sizeStr ($currencySymbol${priceVal.toStringAsFixed(0)} · $stockVal in stock)';
-
-                                    return DropdownMenuItem<String>(
-                                      value: t['id']?.toString(),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(
-                                          fontSize: 11.sp,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (val) {
-                                  item.selectedTyreId = val;
-                                  if (val != null) {
-                                    final selectedTyre = filteredTyres
-                                        .firstWhere(
-                                          (t) => t['id'] == val,
-                                          orElse: () => {},
-                                        );
-                                    if (selectedTyre.isNotEmpty) {
-                                      item.unitPrice =
-                                          (selectedTyre['price'] as num?)
-                                              ?.toDouble() ??
-                                          0.0;
-                                      item.runningKm =
-                                          selectedTyre['running_km'] as int? ??
-                                          40000;
-                                      item.sizeController.text =
-                                          selectedTyre['size']?.toString() ??
-                                          '';
-                                    }
-                                  }
-                                  _syncAmountCollected();
-                                  _updateUi();
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Qty, Autofilled Price & Line Total
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 80,
-                              child: TextFormField(
-                                controller: item.qtyController,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: context.tr('Qty *'),
-                                  labelStyle: TextStyle(fontSize: 12.sp),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                ),
-                                onChanged: (_) {
-                                  _syncAmountCollected();
-                                  _updateUi();
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      context.tr('Price (Autofill)'),
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      '$currencySymbol${item.unitPrice.toStringAsFixed(2)}',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13.sp,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1e293b),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: Colors.blue.shade200,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      context.tr('Line Total'),
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: Colors.blue.shade700,
-                                      ),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      '$currencySymbol${item.lineTotal.toStringAsFixed(2)}',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13.sp,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue.shade900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Each Tyre Item Odometer & Next Change
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: item.odometerController,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: context.tr('Odometer (KM)'),
-                                  labelStyle: TextStyle(fontSize: 12.sp),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextFormField(
-                                controller: item.nextChangeKmController,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: context.tr('Next Change (KM)'),
-                                  labelStyle: TextStyle(fontSize: 12.sp),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    decoration: InputDecoration(
+                      labelText: '${context.tr("Current Odometer (KM)")} *',
+                      hintText: 'e.g. 10000',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                  );
-                },
-              ),
-            ],
-
-            // Add Another Tyre Button
-            OutlinedButton.icon(
-              onPressed: () {
-                row.tyreItems.add(_TyreItemRow(initialQty: 4));
-                _syncAmountCollected();
-                _updateUi();
-              },
-              icon: Icon(Icons.add_circle_outline, size: 18),
-              label: Text(
-                context.tr('+ Add Another Tyre Brand / Size'),
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12.sp,
+                  ),
                 ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Color(0xFF000080),
-                side: BorderSide(color: Color(0xFF000080)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: row.nextTyreChangeKmController,
+                    keyboardType: TextInputType.number,
+                    style: GoogleFonts.inter(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF000080),
+                    ),
+                    decoration: InputDecoration(
+                      labelText: '${context.tr("Next Tyre Change (KM)")} *',
+                      hintText: 'e.g. 50000',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
       );
+
     } else if (row.isWheelBalancingOrAlignmentCategory) {
       return Container(
         margin: const EdgeInsets.only(top: 12),
@@ -4445,6 +4115,60 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Icon(Icons.edit_note, color: const Color(0xFF000080), size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  context.tr('Service Price'),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.sp,
+                    color: const Color(0xFF000080),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: row.customRateController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF000080),
+                fontSize: 15.sp,
+              ),
+              decoration: InputDecoration(
+                labelText: context.tr('Service Price'),
+                hintText: 'Enter price',
+                isDense: true,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF000080)),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onChanged: (_) {
+                _syncAmountCollected();
+                _updateUi();
+              },
+            ),
+            const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -5296,36 +5020,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                 },
               ),
             ],
-            if (row.serviceCategory == 'tyre_change') ...[
-              for (final item in row.tyreItems) ...[
-                Builder(
-                  builder: (context) {
-                    if (item.lineTotal <= 0) return const SizedBox.shrink();
-                    final brandObj = _tyreBrands.firstWhere(
-                      (b) => b['id'] == item.selectedBrandId,
-                      orElse: () => {},
-                    );
-                    final brandName = brandObj['brand']?.toString() ?? '';
-                    final size = item.sizeController.text.trim();
-                    final labelParts = [
-                      if (brandName.isNotEmpty) brandName,
-                      if (size.isNotEmpty) size,
-                    ].join(' ');
-                    final label = labelParts.isNotEmpty
-                        ? '  + Tyre ($labelParts x${item.quantity})'
-                        : '  + Tyre (x${item.quantity})';
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 4.0),
-                      child: _summaryRow(
-                        label,
-                        '+$currencySymbol${item.lineTotal.toStringAsFixed(2)}',
-                        valueColor: Colors.blue.shade900,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ],
+
             if (row.serviceCategory == 'battery_service' ||
                 row.serviceCategory == 'battery_change' ||
                 row.serviceCategory == 'battery' ||
