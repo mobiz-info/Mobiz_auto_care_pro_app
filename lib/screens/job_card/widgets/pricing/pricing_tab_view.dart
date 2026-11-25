@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/language_provider.dart';
 import '../../controllers/job_card_controller.dart';
+import 'accessories_card.dart';
 import 'issue_pricing_card.dart';
 import 'labour_card.dart';
 import 'extras_card.dart';
@@ -53,7 +54,7 @@ class PricingTabView extends StatelessWidget {
   Widget build(BuildContext context) {
     final currencySymbol = context.watch<AuthProvider>().currencySymbol.trim();
     return AnimatedBuilder(
-      animation: controller,
+      animation: Listenable.merge([controller, controller.pricingCtrl]),
       builder: (context, _) {
         final issues = controller.issuesCtrl.reportedIssues;
         final servicesTotal = controller.pricingCtrl.calculateServicesSubtotal(issues);
@@ -73,64 +74,7 @@ class PricingTabView extends StatelessWidget {
                 pricingCtrl: controller.pricingCtrl,
               ),
               SizedBox(height: 14.h),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(8.w),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF000080).withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Icon(
-                        Icons.inventory_2_outlined,
-                        size: 20.sp,
-                        color: const Color(0xFF000080),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            context.tr('Accessories'),
-                            style: GoogleFonts.inter(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1E293B),
-                            ),
-                          ),
-                          SizedBox(height: 2.h),
-                          Text(
-                            controller.pricingCtrl.addedParts.isEmpty
-                                ? context.tr('No accessories added')
-                                : '${controller.pricingCtrl.addedParts.length} ${context.tr('items added')}',
-                            style: GoogleFonts.inter(
-                              fontSize: 12.sp,
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      '$currencySymbol ${partsTotal.toStringAsFixed(2)}',
-                      style: GoogleFonts.inter(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF000080),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              AccessoriesCard(controller: controller.pricingCtrl),
               SizedBox(height: 14.h),
               LabourCard(
                 pricingCtrl: controller.pricingCtrl,
