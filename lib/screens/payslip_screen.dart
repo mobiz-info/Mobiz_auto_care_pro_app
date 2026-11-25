@@ -1410,3 +1410,4 @@ class _RecordPaymentModalState extends State<_RecordPaymentModal> {
     );
   }
 }
+

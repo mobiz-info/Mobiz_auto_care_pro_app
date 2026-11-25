@@ -428,6 +428,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   List<dynamic> _enabledCategories = [];
   String _selectedCategoryFilter = 'all';
 
+  // Branch invoice customisation settings
+  bool _oilChangeOdometerRequired = true;
+  bool _oilChangeReminderRequired = true;
+
   // Branch Staff State
   bool _addStaffs = false;
   List<Map<String, dynamic>> _availableStaffs = [];
@@ -752,6 +756,14 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
         if (_enabledCategories.isNotEmpty) {
           _selectedCategoryFilter = _enabledCategories.first.toString();
+        }
+        if (svcRes['oil_change_odometer_required'] != null) {
+          _oilChangeOdometerRequired =
+              svcRes['oil_change_odometer_required'] == true;
+        }
+        if (svcRes['oil_change_reminder_required'] != null) {
+          _oilChangeReminderRequired =
+              svcRes['oil_change_reminder_required'] == true;
         }
         if (svcRes['is_tax_inclusive'] != null) {
           _isTaxInclusive = svcRes['is_tax_inclusive'] == true;
@@ -1320,7 +1332,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       }
       _reminderDaysControllers.clear();
     } else if (_hasWheelAlignmentService ||
-        _hasOilChangeService ||
+        (_hasOilChangeService && _oilChangeReminderRequired) ||
         _hasInsuranceService) {
       _addCustomReminders = true;
       if (_reminderDaysControllers.isEmpty && !_hasInsuranceService) {
@@ -1494,40 +1506,45 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         }
       }
 
-      // Mandatory validation for Oil Change details
+      // Validation for Oil Change details
       if (row.serviceCategory == 'oil_change') {
         final odoStr = row.odometerController.text.trim();
         final nextKmStr = row.nextOilChangeKmController.text.trim();
-        if (odoStr.isEmpty ||
-            int.tryParse(odoStr) == null ||
-            int.tryParse(odoStr)! <= 0) {
-          _snack(
-            context.tr('Please enter Current Odometer (KM) for Oil Change'),
-            isError: true,
-          );
-          return;
-        }
-        if (nextKmStr.isEmpty ||
-            int.tryParse(nextKmStr) == null ||
-            int.tryParse(nextKmStr)! <= 0) {
-          _snack(
-            context.tr('Please enter Next Oil Change Due (KM) for Oil Change'),
-            isError: true,
-          );
-          return;
+
+        if (_oilChangeOdometerRequired) {
+          if (odoStr.isEmpty ||
+              int.tryParse(odoStr) == null ||
+              int.tryParse(odoStr)! <= 0) {
+            _snack(
+              context.tr('Please enter Current Odometer (KM) for Oil Change'),
+              isError: true,
+            );
+            return;
+          }
+          if (nextKmStr.isEmpty ||
+              int.tryParse(nextKmStr) == null ||
+              int.tryParse(nextKmStr)! <= 0) {
+            _snack(
+              context.tr('Please enter Next Oil Change Due (KM) for Oil Change'),
+              isError: true,
+            );
+            return;
+          }
         }
 
-        if (!_addCustomReminders ||
-            !_reminderDaysControllers.any(
-              (c) => (int.tryParse(c.text.trim()) ?? 0) > 0,
-            )) {
-          _snack(
-            context.tr(
-              'Please enter at least one valid Custom Reminder Day for Oil Change',
-            ),
-            isError: true,
-          );
-          return;
+        if (_oilChangeReminderRequired) {
+          if (!_addCustomReminders ||
+              !_reminderDaysControllers.any(
+                (c) => (int.tryParse(c.text.trim()) ?? 0) > 0,
+              )) {
+            _snack(
+              context.tr(
+                'Please enter at least one valid Custom Reminder Day for Oil Change',
+              ),
+              isError: true,
+            );
+            return;
+          }
         }
       }
 
@@ -3261,7 +3278,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                     decoration: InputDecoration(
-                      labelText: '${context.tr("Current Odometer (KM)")} *',
+                      labelText: _oilChangeOdometerRequired
+                          ? '${context.tr("Current Odometer (KM)")} *'
+                          : '${context.tr("Current Odometer (KM)")} (${context.tr("Optional")})',
                       hintText: 'e.g. 10000',
                       isDense: true,
                       filled: true,
@@ -3283,7 +3302,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       color: const Color(0xFF000080),
                     ),
                     decoration: InputDecoration(
-                      labelText: '${context.tr("Next Oil Change (KM)")} *',
+                      labelText: _oilChangeOdometerRequired
+                          ? '${context.tr("Next Oil Change (KM)")} *'
+                          : '${context.tr("Next Oil Change (KM)")} (${context.tr("Optional")})',
                       hintText: 'e.g. 15000',
                       isDense: true,
                       filled: true,
@@ -7591,7 +7612,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     final bool isReminderLocked =
         _hasWheelAlignmentService ||
         _hasDetailingService ||
-        _hasOilChangeService;
+        (_hasOilChangeService && _oilChangeReminderRequired);
     if (isReminderLocked) {
       _addCustomReminders = true;
       if (_reminderDaysControllers.isEmpty) {

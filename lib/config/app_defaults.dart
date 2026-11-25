@@ -12,4 +12,4 @@ const CountryCode kDefaultCountry = CountryCode.india;
 const String kDefaultLanguageCode = 'en';
 
 /// App Version name extracted from pubspec.yaml
-const String kAppVersion = '1.8.3';
+const String kAppVersion = '1.8.4';
