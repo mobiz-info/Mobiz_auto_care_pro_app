@@ -9,6 +9,10 @@ class JobCardPricingController extends ChangeNotifier {
   final List<Map<String, dynamic>> addedExtras = [];
   final List<Map<String, dynamic>> addedLocalPurchases = [];
 
+  // Service Reminders
+  bool addCustomReminders = false;
+  final List<TextEditingController> reminderDaysControllers = [];
+
   List<dynamic> availableServices = [];
   List<Map<String, dynamic>> serviceCategories = [];
   bool isLoadingServices = false;
@@ -267,6 +271,7 @@ class JobCardPricingController extends ChangeNotifier {
     _replaceRows(addedLabour, data['labour']);
     _replaceRows(addedExtras, data['extras']);
     _replaceRows(addedLocalPurchases, data['local_purchases']);
+    loadCustomReminders(data['custom_reminders'] ?? data['reminders']);
     notifyListeners();
   }
 
@@ -406,8 +411,78 @@ class JobCardPricingController extends ChangeNotifier {
     }
   }
 
+  // Service Reminders methods
+  void toggleCustomReminders(bool? value) {
+    addCustomReminders = value ?? false;
+    if (addCustomReminders && reminderDaysControllers.isEmpty) {
+      reminderDaysControllers.add(TextEditingController(text: ''));
+    }
+    notifyListeners();
+  }
+
+  void addReminderDays([String days = '120']) {
+    reminderDaysControllers.add(TextEditingController(text: days));
+    notifyListeners();
+  }
+
+  void removeReminderDays(int index) {
+    if (index >= 0 && index < reminderDaysControllers.length) {
+      final ctrl = reminderDaysControllers.removeAt(index);
+      ctrl.dispose();
+      notifyListeners();
+    }
+  }
+
+  List<Map<String, dynamic>> getCustomRemindersPayload() {
+    if (!addCustomReminders) return [];
+    return reminderDaysControllers
+        .map((c) => int.tryParse(c.text.trim()) ?? 0)
+        .where((days) => days > 0)
+        .map((days) => {
+              'days_after': days,
+              'template_name': 'servicesreminder',
+            })
+        .toList();
+  }
+
+  void loadCustomReminders(dynamic rawReminders) {
+    for (final c in reminderDaysControllers) {
+      c.dispose();
+    }
+    reminderDaysControllers.clear();
+    addCustomReminders = false;
+
+    if (rawReminders is List && rawReminders.isNotEmpty) {
+      final List<int> daysList = [];
+      for (final r in rawReminders) {
+        if (r is num) {
+          daysList.add(r.toInt());
+        } else if (r is String) {
+          final p = int.tryParse(r) ?? 0;
+          if (p > 0) daysList.add(p);
+        } else if (r is Map) {
+          final daysVal = int.tryParse(
+                (r['days_after'] ?? r['days'] ?? '').toString(),
+              ) ??
+              0;
+          if (daysVal > 0) daysList.add(daysVal);
+        }
+      }
+      if (daysList.isNotEmpty) {
+        addCustomReminders = true;
+        for (final days in daysList) {
+          reminderDaysControllers.add(TextEditingController(text: days.toString()));
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
+    for (final c in reminderDaysControllers) {
+      c.dispose();
+    }
+    reminderDaysControllers.clear();
     serviceRateController.dispose();
     serviceQtyController.dispose();
     serviceDiscountController.dispose();
