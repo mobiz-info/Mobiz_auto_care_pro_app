@@ -122,6 +122,7 @@ class _TradingItemRow {
 // ── Per-service row state ────────────────────────────────────────────────────
 class _ServiceRow {
   final Map<String, dynamic> service;
+  final TextEditingController qtyController = TextEditingController(text: '1');
   Map<String, dynamic>? selectedScheme;
   double schemeDiscount = 0.0;
   List<dynamic> availableSchemes = [];
@@ -322,6 +323,8 @@ class _ServiceRow {
     }
   }
 
+  double get qty => (double.tryParse(qtyController.text) ?? 1.0).clamp(0.01, double.infinity);
+
   double get rate {
     final custom = double.tryParse(customRateController.text);
     if (custom != null && custom >= 0) return custom;
@@ -329,7 +332,7 @@ class _ServiceRow {
   }
 
   double get subtotal {
-    double base = rate;
+    double base = rate * qty;
     if (serviceCategory == 'oil_change') {
       base += oilTotalCharge;
     } else if (serviceCategory == 'battery_change' ||
@@ -353,6 +356,7 @@ class _ServiceRow {
   String get serviceName => service['name']?.toString() ?? '';
 
   void dispose() {
+    qtyController.dispose();
     customRateController.dispose();
     voucherController.dispose();
     discountController.dispose();
@@ -1080,10 +1084,20 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
           // Always set the actual rate from the saved invoice
           row.customRateController.text = itemRate.toStringAsFixed(2);
+          final itemQty = double.tryParse(item['qty']?.toString() ?? '1') ?? 1.0;
+          row.qtyController.text = itemQty % 1 == 0 ? itemQty.toInt().toString() : itemQty.toString();
           if (itemDisc > 0) {
             row.discountController.text = itemDisc.toStringAsFixed(2);
           }
-          row.discountController.addListener(() {
+          row.qtyController.addListener(() {
+            _syncAmountCollected();
+            _updateUi();
+          });
+          row.qtyController.addListener(() {
+        _syncAmountCollected();
+        _updateUi();
+      });
+      row.discountController.addListener(() {
             _syncAmountCollected();
             _updateUi();
           });
@@ -1311,6 +1325,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         row.odometerController.text = currentOdo.toString();
         row._onOdometerChanged();
       }
+      row.qtyController.addListener(() {
+        _syncAmountCollected();
+        _updateUi();
+      });
       row.discountController.addListener(() {
         _syncAmountCollected();
         _updateUi();
@@ -1685,9 +1703,11 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                 'insurance_company_name': r.selectedInsuranceCompanyName,
             };
           }
+          final unitRate = r.qty > 0 ? (r.subtotal / r.qty) : r.rate;
           return {
             'name': r.serviceName,
-            'rate': r.subtotal,
+            'rate': unitRate,
+            'qty': r.qty,
             'discount': r.effectiveDiscount,
             if (r.isInsuranceCategory) ...{
               'service_category': 'auto_insurance',
@@ -2638,11 +2658,143 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     return _card(
       title: row.serviceName,
       titleIcon: Icons.local_car_wash_outlined,
-      badge: '$currencySymbol${row.rate.toStringAsFixed(2)}',
+      badge: row.qty > 1
+          ? '${row.qty % 1 == 0 ? row.qty.toInt() : row.qty} × $currencySymbol${row.rate.toStringAsFixed(2)}'
+          : '$currencySymbol${row.rate.toStringAsFixed(2)}',
       badgeColor: Colors.grey.shade700,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Rate & Quantity row
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.blue.shade100),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.tr('Rate'),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$currencySymbol${row.rate.toStringAsFixed(2)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1e293b),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  height: 32,
+                  width: 1,
+                  color: Colors.blue.shade200,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.tr('Quantity'),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              final current = row.qty;
+                              if (current > 1) {
+                                final next = current - 1;
+                                row.qtyController.text =
+                                    next % 1 == 0 ? next.toInt().toString() : next.toString();
+                                _syncAmountCollected();
+                                _updateUi();
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: const Icon(Icons.remove, size: 16),
+                            ),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: row.qtyController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.inter(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding:
+                                    EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              ),
+                              onChanged: (_) {
+                                _syncAmountCollected();
+                                _updateUi();
+                              },
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              final current = row.qty;
+                              final next = current + 1;
+                              row.qtyController.text =
+                                  next % 1 == 0 ? next.toInt().toString() : next.toString();
+                              _syncAmountCollected();
+                              _updateUi();
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: const Icon(Icons.add, size: 16),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
           // Schemes section
           if (row.isLoadingSchemes)
             const Center(
@@ -5014,8 +5166,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           // Per-service lines
           for (final row in _rows) ...[
             _summaryRow(
-              context.tr(row.serviceName),
-              '$currencySymbol${row.rate.toStringAsFixed(2)}',
+              row.qty > 1
+                  ? '${context.tr(row.serviceName)} (${row.qty % 1 == 0 ? row.qty.toInt() : row.qty} × $currencySymbol${row.rate.toStringAsFixed(2)})'
+                  : context.tr(row.serviceName),
+              '$currencySymbol${(row.rate * row.qty).toStringAsFixed(2)}',
             ),
             if (row.serviceCategory == 'oil_change') ...[
               for (final item in row.oilItems) ...[

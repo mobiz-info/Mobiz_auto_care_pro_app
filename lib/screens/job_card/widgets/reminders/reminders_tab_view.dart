@@ -249,56 +249,7 @@ class _RemindersTabViewState extends State<RemindersTabView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Header Card
-              Container(
-                padding: EdgeInsets.all(14.w),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(10.w),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF000080).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10.r),
-                      ),
-                      child: Icon(
-                        Icons.notifications_active_outlined,
-                        size: 24.sp,
-                        color: const Color(0xFF000080),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            context.tr('Service Reminders'),
-                            style: GoogleFonts.inter(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF000080),
-                            ),
-                          ),
-                          SizedBox(height: 2.h),
-                          Text(
-                            context.tr('Enable reminders for specific services. Reminders will be scheduled and sent to the customer via WhatsApp.'),
-                            style: GoogleFonts.inter(
-                              fontSize: 11.sp,
-                              color: Colors.grey.shade700,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 16.h),
+              
 
               // Empty services notice
               if (services.isEmpty) ...[
@@ -426,19 +377,7 @@ class _RemindersTabViewState extends State<RemindersTabView> {
                 ],
               ],
 
-              // Button to add general custom reminder
-              OutlinedButton.icon(
-                onPressed: () => remindersCtrl.addCustomReminder(),
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: Text(context.tr('+ Add General Custom Reminder')),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF000080),
-                  padding: EdgeInsets.symmetric(vertical: 12.h),
-                  side: const BorderSide(color: Color(0xFF000080)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-                ),
-              ),
-              SizedBox(height: 24.h),
+             
             ],
           ),
         );
@@ -446,3 +385,4 @@ class _RemindersTabViewState extends State<RemindersTabView> {
     );
   }
 }
+
