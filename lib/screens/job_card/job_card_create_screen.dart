@@ -10,6 +10,7 @@ import '../../providers/language_provider.dart';
 import '../../widgets/job_card_responsive.dart';
 import 'controllers/job_card_controller.dart';
 import 'widgets/accessories/accessories_tab_view.dart';
+import 'widgets/local_purchase/local_purchase_tab_view.dart';
 import 'widgets/billing/billing_tab_view.dart';
 import 'widgets/common/job_card_footer.dart';
 import 'widgets/common/section_card.dart';
@@ -63,14 +64,14 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     );
 
     _formTabs = TabController(
-      length: 11,
-      initialIndex: widget.initialTabIndex.clamp(0, 10),
+      length: 12,
+      initialIndex: widget.initialTabIndex.clamp(0, 11),
       vsync: this,
     );
 
     _formTabs.addListener(() {
       if (mounted) setState(() {});
-      if (_formTabs.index == 10) {
+      if (_formTabs.index == 11) {
         final token = context.read<AuthProvider>().token;
         if (token != null) {
           _controller.billingCtrl.loadJobCardInvoice(
@@ -95,7 +96,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
   }
 
   Future<void> _saveStageAndExit() async {
-    if (_formTabs.index < 4 || _formTabs.index > 8) return;
+    if (_formTabs.index < 4 || _formTabs.index > 9) return;
     if (!_controller.validateStageDraft(_formTabs.index, onMessage: (msg) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(msg))),
@@ -107,7 +108,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     if (token == null) return;
     final res = await _controller.submitJobCard(
       token: token,
-      statusOverride: _formTabs.index >= 6 ? 'in_progress' : null,
+      statusOverride: _formTabs.index >= 7 ? 'in_progress' : null,
       onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(msg))),
@@ -236,7 +237,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 5: Accessories -> Job Progress (Tab 6)
+    // Tab 5: Accessories -> Local Purchase (Tab 6)
     if (_formTabs.index == 5) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
@@ -254,9 +255,27 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 6: Job Progress -> Quality Check (Tab 7)
+    // Tab 6: Local Purchase -> Job Progress (Tab 7)
     if (_formTabs.index == 6) {
-      if (!_controller.validateStageDraft(6, onMessage: (msg) {
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return;
+      final res = await _controller.submitJobCard(
+        token: token,
+        keepOpen: true,
+        onMessage: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr(msg))),
+          );
+        },
+      );
+      if (res['success'] == true && mounted) {
+        _formTabs.index = 7;
+      }
+      return;
+    }
+    // Tab 7: Job Progress -> Quality Check (Tab 8)
+    if (_formTabs.index == 7) {
+      if (!_controller.validateStageDraft(7, onMessage: (msg) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(msg))),
         );
@@ -276,29 +295,11 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
         },
       );
       if (res['success'] == true && mounted) {
-        _formTabs.index = 7;
-      }
-      return;
-    }
-    // Tab 7: Quality Check -> Pricing (Tab 8)
-    if (_formTabs.index == 7) {
-      final token = context.read<AuthProvider>().token;
-      if (token == null) return;
-      final res = await _controller.submitJobCard(
-        token: token,
-        keepOpen: true,
-        onMessage: (msg) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.tr(msg))),
-          );
-        },
-      );
-      if (res['success'] == true && mounted) {
         _formTabs.index = 8;
       }
       return;
     }
-    // Tab 8: Pricing -> Overview (Tab 9)
+    // Tab 8: Quality Check -> Pricing (Tab 9)
     if (_formTabs.index == 8) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
@@ -316,9 +317,27 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 9: Overview -> Billing (Tab 10)
+    // Tab 9: Pricing -> Overview (Tab 10)
     if (_formTabs.index == 9) {
-      _formTabs.index = 10;
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return;
+      final res = await _controller.submitJobCard(
+        token: token,
+        keepOpen: true,
+        onMessage: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr(msg))),
+          );
+        },
+      );
+      if (res['success'] == true && mounted) {
+        _formTabs.index = 10;
+      }
+      return;
+    }
+    // Tab 10: Overview -> Billing (Tab 11)
+    if (_formTabs.index == 10) {
+      _formTabs.index = 11;
       return;
     }
     if (_controller.billingCtrl.jobCardInvoice != null) {
@@ -419,6 +438,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                 Tab(text: context.tr('Inspection Summary')),
                 Tab(text: context.tr('Services & Complaints')),
                 Tab(text: context.tr('Accessories')),
+                Tab(text: context.tr('Local Purchase')),
                 Tab(text: context.tr('Job Progress')),
                 Tab(text: context.tr('Quality Check')),
                 Tab(text: context.tr('Pricing')),
@@ -516,9 +536,15 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                         ExpectedDeliveryDateCard(controller: _controller),
                       ]),
                       AccessoriesTabView(controller: _controller.pricingCtrl),
+                      LocalPurchaseTabView(controller: _controller.pricingCtrl),
                       JobProgressTabView(controller: _controller),
                       QualityCheckTabView(controller: _controller, token: context.read<AuthProvider>().token),
-                      PricingTabView(controller: _controller),
+                      PricingTabView(
+                        controller: _controller,
+                        onSwitchToLocalPurchaseTab: () {
+                          _formTabs.animateTo(6);
+                        },
+                      ),
                       OverviewTabView(controller: _controller),
                       BillingTabView(controller: _controller),
                     ],

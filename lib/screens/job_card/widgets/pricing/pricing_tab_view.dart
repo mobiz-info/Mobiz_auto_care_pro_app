@@ -14,10 +14,12 @@ import 'schedule_signoff_card.dart';
 
 class PricingTabView extends StatelessWidget {
   final JobCardController controller;
+  final VoidCallback? onSwitchToLocalPurchaseTab;
 
   const PricingTabView({
     super.key,
     required this.controller,
+    this.onSwitchToLocalPurchaseTab,
   });
 
   Widget _buildSummaryRow({
@@ -61,6 +63,8 @@ class PricingTabView extends StatelessWidget {
         final partsTotal = controller.pricingCtrl.partsSubtotal;
         final labourTotal = controller.pricingCtrl.calculateLabourSubtotal(issues);
         final extrasTotal = controller.pricingCtrl.extrasSubtotal;
+        final localPurchasesTotal = controller.pricingCtrl.localPurchasesSubtotal;
+        final localPurchases = controller.pricingCtrl.addedLocalPurchases;
         final grandTotal = controller.pricingCtrl.calculateGrandEstimatedTotal(issues);
 
         return SingleChildScrollView(
@@ -75,6 +79,135 @@ class PricingTabView extends StatelessWidget {
               ),
               SizedBox(height: 14.h),
               AccessoriesCard(controller: controller.pricingCtrl),
+              SizedBox(height: 14.h),
+
+              // Local Purchases Section in Pricing Tab
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                padding: EdgeInsets.all(14.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF15803D).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 18.sp,
+                            color: const Color(0xFF15803D),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.tr('Local Purchases'),
+                                style: GoogleFonts.inter(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                              ),
+                              Text(
+                                localPurchases.isEmpty
+                                    ? context.tr('No local purchases added')
+                                    : '${localPurchases.length} ${context.tr("items added")} • $currencySymbol ${localPurchasesTotal.toStringAsFixed(2)}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11.5.sp,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (onSwitchToLocalPurchaseTab != null)
+                          TextButton.icon(
+                            onPressed: onSwitchToLocalPurchaseTab,
+                            style: TextButton.styleFrom(
+                              backgroundColor: const Color(0xFF000080).withValues(alpha: 0.08),
+                              foregroundColor: const Color(0xFF000080),
+                              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6.r)),
+                            ),
+                            icon: Icon(Icons.add, size: 14.sp),
+                            label: Text(
+                              localPurchases.isEmpty ? context.tr('Add') : context.tr('Manage'),
+                              style: GoogleFonts.inter(fontSize: 11.5.sp, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (localPurchases.isNotEmpty) ...[
+                      SizedBox(height: 10.h),
+                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      SizedBox(height: 8.h),
+                      ...localPurchases.map((lp) {
+                        final name = (lp['item_name'] ?? '-').toString();
+                        final supplier = (lp['supplier_name'] ?? '').toString();
+                        final bill = (lp['bill_number'] ?? '').toString();
+                        final qty = double.tryParse((lp['quantity'] ?? '1').toString()) ?? 1.0;
+                        final rate = double.tryParse((lp['rate'] ?? '0').toString()) ?? 0.0;
+                        final total = (lp['total_amount'] as num?)?.toDouble() ?? (qty * rate);
+
+                        String subtitle = supplier;
+                        if (bill.isNotEmpty) {
+                          subtitle = subtitle.isNotEmpty ? '$subtitle ($bill)' : bill;
+                        }
+
+                        return Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4.h),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    if (subtitle.isNotEmpty)
+                                      Text(
+                                        subtitle,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.5.sp,
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '${qty.toStringAsFixed(qty % 1 == 0 ? 0 : 1)} × $currencySymbol ${rate.toStringAsFixed(2)} = $currencySymbol ${total.toStringAsFixed(2)}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11.5.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF000080),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+              ),
               SizedBox(height: 14.h),
               LabourCard(
                 pricingCtrl: controller.pricingCtrl,
@@ -145,6 +278,13 @@ class PricingTabView extends StatelessWidget {
                       label: context.tr('Extras Total'),
                       value: '$currencySymbol ${extrasTotal.toStringAsFixed(2)}',
                     ),
+                    if (localPurchasesTotal > 0) ...[
+                      SizedBox(height: 8.h),
+                      _buildSummaryRow(
+                        label: context.tr('Local Purchases Total'),
+                        value: '$currencySymbol ${localPurchasesTotal.toStringAsFixed(2)}',
+                      ),
+                    ],
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 12.h),
                       child: Divider(

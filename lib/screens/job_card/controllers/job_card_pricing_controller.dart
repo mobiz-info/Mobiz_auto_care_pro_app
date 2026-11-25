@@ -7,6 +7,7 @@ class JobCardPricingController extends ChangeNotifier {
   final List<Map<String, dynamic>> addedParts = [];
   final List<Map<String, dynamic>> addedLabour = [];
   final List<Map<String, dynamic>> addedExtras = [];
+  final List<Map<String, dynamic>> addedLocalPurchases = [];
 
   List<dynamic> availableServices = [];
   List<Map<String, dynamic>> serviceCategories = [];
@@ -88,11 +89,17 @@ class JobCardPricingController extends ChangeNotifier {
         (sum, item) => sum + ((item['total_amount'] as num?)?.toDouble() ?? 0),
       );
 
+  double get localPurchasesSubtotal => addedLocalPurchases.fold(
+        0.0,
+        (sum, item) => sum + ((item['total_amount'] as num?)?.toDouble() ?? 0),
+      );
+
   double calculateGrandEstimatedTotal(List<Map<String, dynamic>> reportedIssues) {
     return calculateServicesSubtotal(reportedIssues) +
         partsSubtotal +
         calculateLabourSubtotal(reportedIssues) +
-        extrasSubtotal;
+        extrasSubtotal +
+        localPurchasesSubtotal;
   }
 
   double calculateBillingTotal(List<Map<String, dynamic>> reportedIssues) {
@@ -102,6 +109,7 @@ class JobCardPricingController extends ChangeNotifier {
       addedParts,
       addedLabour,
       addedExtras,
+      addedLocalPurchases,
     ]) {
       for (final row in rows) {
         final net = JobCardConstants.numberOrZero(row['total_amount']);
@@ -258,6 +266,7 @@ class JobCardPricingController extends ChangeNotifier {
     _replaceRows(addedParts, data['parts']);
     _replaceRows(addedLabour, data['labour']);
     _replaceRows(addedExtras, data['extras']);
+    _replaceRows(addedLocalPurchases, data['local_purchases']);
     notifyListeners();
   }
 
@@ -322,6 +331,79 @@ class JobCardPricingController extends ChangeNotifier {
         'total_amount': (rate * quantity - discount).clamp(0, double.infinity).toDouble(),
       };
     }).toList();
+  }
+
+  List<Map<String, dynamic>> getLocalPurchasesPayload() {
+    return addedLocalPurchases
+        .where(
+          (row) => (row['item_name'] ?? '').toString().trim().isNotEmpty,
+        )
+        .map((row) {
+      final rate = JobCardConstants.numberOrZero(row['rate']);
+      final quantity = JobCardConstants.numberOrZero(row['quantity'], fallback: 1);
+      final discount = JobCardConstants.numberOrZero(row['discount']);
+      final costPrice = JobCardConstants.numberOrZero(row['cost_price']);
+      return {
+        ...row,
+        'cost_price': costPrice,
+        'quantity': quantity,
+        'rate': rate,
+        'discount': discount,
+        'total_amount': (rate * quantity - discount).clamp(0, double.infinity).toDouble(),
+      };
+    }).toList();
+  }
+
+  void addLocalPurchase({
+    required String itemName,
+    String? supplierName,
+    String? billNumber,
+    double costPrice = 0.0,
+    double rate = 0.0,
+    double quantity = 1.0,
+    double discount = 0.0,
+    String unit = 'Pcs',
+    String? remarks,
+  }) {
+    final net = ((rate * quantity) - discount).clamp(0.0, double.infinity);
+    addedLocalPurchases.add({
+      'item_name': itemName,
+      'supplier_name': supplierName ?? '',
+      'bill_number': billNumber ?? '',
+      'cost_price': costPrice,
+      'rate': rate,
+      'quantity': quantity,
+      'discount': discount,
+      'unit': unit,
+      'vat_percentage': 0.0,
+      'total_amount': net,
+      'remarks': remarks ?? '',
+    });
+    notifyListeners();
+  }
+
+  void updateLocalPurchase(int index, Map<String, dynamic> updated) {
+    if (index >= 0 && index < addedLocalPurchases.length) {
+      final rate = JobCardConstants.numberOrZero(updated['rate']);
+      final quantity = JobCardConstants.numberOrZero(updated['quantity'], fallback: 1);
+      final discount = JobCardConstants.numberOrZero(updated['discount']);
+      final net = ((rate * quantity) - discount).clamp(0.0, double.infinity);
+      addedLocalPurchases[index] = {
+        ...updated,
+        'rate': rate,
+        'quantity': quantity,
+        'discount': discount,
+        'total_amount': net,
+      };
+      notifyListeners();
+    }
+  }
+
+  void removeLocalPurchase(int index) {
+    if (index >= 0 && index < addedLocalPurchases.length) {
+      addedLocalPurchases.removeAt(index);
+      notifyListeners();
+    }
   }
 
   @override

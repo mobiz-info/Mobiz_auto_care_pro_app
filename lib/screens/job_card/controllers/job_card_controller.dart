@@ -617,6 +617,7 @@ class JobCardController extends ChangeNotifier {
       'parts': pricingCtrl.getPartsPayload(),
       'labour': pricingCtrl.getLabourPayload(),
       'extras': pricingCtrl.getExtrasPayload(),
+      'local_purchases': pricingCtrl.getLocalPurchasesPayload(),
       'reported_issues': issuesCtrl.getReportedIssuesPayload(),
       'quality_checks': getQualityChecksPayload(),
     };
