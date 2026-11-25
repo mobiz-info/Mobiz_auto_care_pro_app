@@ -12,8 +12,6 @@ import 'invoice_view_screen.dart';
 class _OilItemRow {
   String? selectedOilCategory;
   String? selectedOilProductId;
-  String? selectedOilGroupKey;
-  double? selectedOilVolume;
   int? selectedOilRunKm;
   double? oilPricePerLitre;
   bool isLoadingOilPrice = false;
@@ -466,7 +464,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   bool _addRemarks = false;
   bool _showWarrantyInPdf = false;
   final TextEditingController _remarksController = TextEditingController();
-  bool _addReminders = false;
   bool _addCustomReminders = false;
   final List<TextEditingController> _reminderDaysControllers = [];
 
@@ -1859,8 +1856,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           'staffs': _selectedStaffs
               .map((s) => {'id': s['id'], 'name': s['name']})
               .toList(),
-        if (customRemindersPayload.isNotEmpty || _addReminders)
-          'reminders_enabled': true,
+        if (customRemindersPayload.isNotEmpty) 'reminders_enabled': true,
         if (customRemindersPayload.isNotEmpty)
           'reminders': customRemindersPayload,
         if (widget.bookingId != null) 'booking_id': widget.bookingId,
