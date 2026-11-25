@@ -21,6 +21,7 @@ import 'widgets/inspection/inspection_summary_tab_view.dart';
 import 'widgets/job_progress/job_progress_tab_view.dart';
 import 'widgets/overview/overview_tab_view.dart';
 import 'widgets/pricing/pricing_tab_view.dart';
+import 'widgets/reminders/reminders_tab_view.dart';
 import 'widgets/reported_issues/reported_issue_tile.dart';
 import 'widgets/reported_issues/reported_issues_card.dart';
 import 'widgets/vehicle/vehicle_profile_card.dart';
@@ -64,14 +65,14 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
     );
 
     _formTabs = TabController(
-      length: 12,
-      initialIndex: widget.initialTabIndex.clamp(0, 11),
+      length: 13,
+      initialIndex: widget.initialTabIndex.clamp(0, 12),
       vsync: this,
     );
 
     _formTabs.addListener(() {
       if (mounted) setState(() {});
-      if (_formTabs.index == 11) {
+      if (_formTabs.index == 12) {
         final token = context.read<AuthProvider>().token;
         if (token != null) {
           _controller.billingCtrl.loadJobCardInvoice(
@@ -96,7 +97,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
   }
 
   Future<void> _saveStageAndExit() async {
-    if (_formTabs.index < 4 || _formTabs.index > 9) return;
+    if (_formTabs.index < 4 || _formTabs.index > 10) return;
     if (!_controller.validateStageDraft(_formTabs.index, onMessage: (msg) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(msg))),
@@ -317,7 +318,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 9: Pricing -> Overview (Tab 10)
+    // Tab 9: Pricing -> Reminders (Tab 10)
     if (_formTabs.index == 9) {
       final token = context.read<AuthProvider>().token;
       if (token == null) return;
@@ -335,9 +336,27 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
       }
       return;
     }
-    // Tab 10: Overview -> Billing (Tab 11)
+    // Tab 10: Reminders -> Overview (Tab 11)
     if (_formTabs.index == 10) {
-      _formTabs.index = 11;
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return;
+      final res = await _controller.submitJobCard(
+        token: token,
+        keepOpen: true,
+        onMessage: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr(msg))),
+          );
+        },
+      );
+      if (res['success'] == true && mounted) {
+        _formTabs.index = 11;
+      }
+      return;
+    }
+    // Tab 11: Overview -> Billing (Tab 12)
+    if (_formTabs.index == 11) {
+      _formTabs.index = 12;
       return;
     }
     if (_controller.billingCtrl.jobCardInvoice != null) {
@@ -442,6 +461,7 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                 Tab(text: context.tr('Job Progress')),
                 Tab(text: context.tr('Quality Check')),
                 Tab(text: context.tr('Pricing')),
+                Tab(text: context.tr('Reminders')),
                 Tab(text: context.tr('Overview')),
                 Tab(text: context.tr('Billing (Invoice)')),
               ],
@@ -543,6 +563,12 @@ class _JobCardCreateScreenState extends State<JobCardCreateScreen>
                         controller: _controller,
                         onSwitchToLocalPurchaseTab: () {
                           _formTabs.animateTo(6);
+                        },
+                      ),
+                      RemindersTabView(
+                        controller: _controller,
+                        onSwitchToServicesTab: () {
+                          _formTabs.animateTo(4);
                         },
                       ),
                       OverviewTabView(controller: _controller),

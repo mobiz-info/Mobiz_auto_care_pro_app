@@ -245,7 +245,7 @@ class _LocalPurchaseCardState extends State<LocalPurchaseCard> {
                       style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: context.tr('e.g. Al Madina Auto'),
+                        hintText: context.tr(''),
                         contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 9.h),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
                         filled: true,
@@ -274,7 +274,7 @@ class _LocalPurchaseCardState extends State<LocalPurchaseCard> {
                       style: GoogleFonts.inter(fontSize: 12.sp, fontWeight: FontWeight.w500),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: context.tr('e.g. INV-1024'),
+                        hintText: context.tr(''),
                         contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 9.h),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
                         filled: true,

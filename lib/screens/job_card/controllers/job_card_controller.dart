@@ -11,6 +11,7 @@ import 'job_card_inspection_controller.dart';
 import 'job_card_issues_controller.dart';
 import 'job_card_pricing_controller.dart';
 import 'job_card_billing_controller.dart';
+import 'job_card_reminders_controller.dart';
 
 class JobCardController extends ChangeNotifier {
   final Map<String, dynamic>? initialCustomer;
@@ -25,6 +26,7 @@ class JobCardController extends ChangeNotifier {
   final JobCardIssuesController issuesCtrl = JobCardIssuesController();
   final JobCardPricingController pricingCtrl = JobCardPricingController();
   final JobCardBillingController billingCtrl = JobCardBillingController();
+  final JobCardRemindersController remindersCtrl = JobCardRemindersController();
 
   String? savedJobCardId;
   final Map<String, dynamic> formData = {};
@@ -518,6 +520,8 @@ class JobCardController extends ChangeNotifier {
     }
     _syncQualityChecksWithServices();
     pricingCtrl.loadExistingJobCard(data);
+    remindersCtrl.loadFromData(data['custom_reminders'] ?? data['reminders']);
+    remindersCtrl.syncWithServices(pricingCtrl.addedServices, issuesCtrl.reportedIssues);
     notifyListeners();
   }
 
@@ -618,7 +622,7 @@ class JobCardController extends ChangeNotifier {
       'labour': pricingCtrl.getLabourPayload(),
       'extras': pricingCtrl.getExtrasPayload(),
       'local_purchases': pricingCtrl.getLocalPurchasesPayload(),
-      'custom_reminders': pricingCtrl.getCustomRemindersPayload(),
+      'custom_reminders': remindersCtrl.getPayload(),
       'reported_issues': issuesCtrl.getReportedIssuesPayload(),
       'quality_checks': getQualityChecksPayload(),
     };
@@ -696,6 +700,7 @@ class JobCardController extends ChangeNotifier {
     issuesCtrl.dispose();
     pricingCtrl.dispose();
     billingCtrl.dispose();
+    remindersCtrl.dispose();
 
     super.dispose();
   }

@@ -11,7 +11,6 @@ import 'issue_pricing_card.dart';
 import 'labour_card.dart';
 import 'extras_card.dart';
 import 'schedule_signoff_card.dart';
-import 'service_reminders_card.dart';
 
 class PricingTabView extends StatelessWidget {
   final JobCardController controller;
@@ -219,8 +218,6 @@ class PricingTabView extends StatelessWidget {
               ExtrasCard(controller: controller.pricingCtrl),
               SizedBox(height: 14.h),
               ScheduleSignoffCard(controller: controller),
-              SizedBox(height: 14.h),
-              ServiceRemindersCard(controller: controller.pricingCtrl),
               SizedBox(height: 16.h),
 
               // Comprehensive Pricing Summary Card (Section totals + Grand Total)
