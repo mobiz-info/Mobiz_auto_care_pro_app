@@ -887,10 +887,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         }
       } catch (_) {}
 
-      // Keep all valid heads including Salary & Wages and Salary Advance
+      // Only keep valid heads (Salary & Wages is the single consolidated head for staff payments)
       _expenseHeadsNotifier.value = expenseProvider.expenseHeads.where((head) {
-        final name = (head['name'] ?? '').toString().trim().toLowerCase();
-        return name != 'purchase';
+        final name = (head['name'] ?? '').toString().trim().toLowerCase().replaceAll('&', 'and');
+        return name != 'purchase' && name != 'salary' && name != 'salary advance';
       }).toList();
       _suppliersNotifier.value = expenseProvider.suppliers;
       _stocksNotifier.value = inventoryProvider.stockItems;
