@@ -1828,8 +1828,11 @@ class _BillsScreenState extends State<BillsScreen> {
                 ),
                 SizedBox(height: 16),
 
+                if (context.read<AuthProvider>().hasPermission('bill', 'pdf') ||
+                    context.read<AuthProvider>().hasPermission('bill', 'whatsapp'))
                 Row(
                   children: [
+                    if (context.read<AuthProvider>().hasPermission('bill', 'pdf')) ...[
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _downloadInvoice(context, inv),
@@ -1862,6 +1865,7 @@ class _BillsScreenState extends State<BillsScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _shareInvoice(context, inv),
@@ -1879,8 +1883,11 @@ class _BillsScreenState extends State<BillsScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                if (context.read<AuthProvider>().hasPermission('bill', 'edit') ||
+                    context.read<AuthProvider>().hasPermission('bill', 'delete'))
                 Row(
                   children: [
+                    if (context.read<AuthProvider>().hasPermission('bill', 'edit'))
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () async {
@@ -1910,7 +1917,10 @@ class _BillsScreenState extends State<BillsScreen> {
                         ),
                       ),
                     ),
+                    if (context.read<AuthProvider>().hasPermission('bill', 'edit') &&
+                        context.read<AuthProvider>().hasPermission('bill', 'delete'))
                     const SizedBox(width: 8),
+                    if (context.read<AuthProvider>().hasPermission('bill', 'delete'))
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _deleteInvoice(context, inv),

@@ -233,25 +233,26 @@ class _NewJobScreenState extends State<NewJobScreen> {
       appBar: AppBar(
         title: Text(context.tr('New Job'), style: TextStyle(fontWeight: FontWeight.w600)),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: TextButton.icon(
-              onPressed: () => showQuickSaleSheet(context),
-              style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF000080),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+          if (context.read<AuthProvider>().hasPermission('quick_sale', 'view'))
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: TextButton.icon(
+                onPressed: () => showQuickSaleSheet(context),
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(0xFF000080),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              ),
-              icon: const Icon(Icons.flash_on, size: 16),
-              label: Text(
-                context.tr('Quick Sale'),
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12.sp),
+                icon: const Icon(Icons.flash_on, size: 16),
+                label: Text(
+                  context.tr('Quick Sale'),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12.sp),
+                ),
               ),
             ),
-          ),
         ],
       ),
       body: Padding(

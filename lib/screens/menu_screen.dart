@@ -64,6 +64,52 @@ class _MenuScreenState extends State<MenuScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<AuthProvider>().refreshPermissions();
+      }
+    });
+  }
+
+  String? _menuPermKey(String title) {
+    const map = {
+      'New Job': 'new_job',
+      'Quick Sale': 'quick_sale',
+      'Insurance': 'new_job',
+      'Job Card': 'job_card',
+      'Leads': 'leads',
+      'Quotations': 'quotations',
+      'Book Now': 'bookings',
+      'Bookings': 'bookings',
+      'Bill': 'bill',
+      'Outstanding': 'outstanding',
+      'Collection': 'outstanding',
+      'Receipt': 'receipt',
+      'Vehicle': 'customers',
+      'Edit Customer': 'customers',
+      'Customers': 'customers',
+      'Reports': 'reports',
+      'Schemes': 'schemes',
+      'Notifications': 'notifications',
+      'Complaints': 'complaints',
+      'Expense': 'expense',
+      'Suppliers': 'suppliers',
+      'Supplier Payables': 'suppliers',
+      'Purchase Entry': 'purchase',
+      'Purchase Req': 'purchase',
+      'Purchase': 'purchase',
+      'Stock Management': 'stock',
+      'Stock Items': 'stock',
+      'Oil Stock': 'stock',
+      'Staff Leaves': 'staff_payslips',
+      'Payslips': 'staff_payslips',
+      'Expense Heads': 'settings',
+      'Extras': 'settings',
+      'Vehicle Makes': 'settings',
+      'Vehicle Brands': 'settings',
+      'Printers': 'settings',
+    };
+    return map[title];
   }
 
   // --- navigation ---
@@ -1088,10 +1134,20 @@ class _MenuScreenState extends State<MenuScreen> {
 
   // ─── Quick Menu Grid ─────────────────────────────────────────────────────
   Widget _buildMenuGrid() {
-    final auth = context.read<AuthProvider>();
-    final menuItems = auth.isCompanyAdmin
+    final auth = context.watch<AuthProvider>();
+    final rawItems = auth.isCompanyAdmin
         ? _companyMenuItems
         : _branchMenuItems;
+    final menuItems = rawItems.where((item) {
+      final title = item['title'] as String;
+      if (title.isEmpty) return false;
+      if (title == 'Insurance' && !auth.hasInsuranceModule) return false;
+      final permKey = _menuPermKey(title);
+      if (permKey != null && !auth.hasPermission(permKey, 'view')) {
+        return false;
+      }
+      return true;
+    }).toList();
     return GridView.builder(
       shrinkWrap: true,
       physics: NeverScrollableScrollPhysics(),

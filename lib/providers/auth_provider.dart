@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/country_config.dart';
@@ -18,6 +19,9 @@ class AuthProvider with ChangeNotifier {
   int _subscriptionDaysLeft = 999;
   String? _subscriptionEndDate;
   bool _hasInsuranceModule = false;
+  bool _isFullAccess = true;
+  String _designationName = '';
+  Map<String, dynamic> _permissions = {};
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _token != null;
@@ -28,17 +32,30 @@ class AuthProvider with ChangeNotifier {
   String? get displayName => _displayName;
   String? get username => _username;
   String? get companyLogo => _companyLogo;
+  bool get isFullAccess => _isFullAccess;
+  String get designationName => _designationName;
+  Map<String, dynamic> get permissions => _permissions;
+
   bool get isBranchAdmin =>
       _role == 'BRANCH_ADMIN' ||
       _role == 'BRANCH_MANAGER' ||
       _role == 'MARKETING' ||
       _role == 'CLERICAL' ||
-      _role == 'SERVICE';
+      _role == 'SERVICE' ||
+      _role == 'STAFF';
   bool get isCompanyAdmin => _role == 'COMPANY_ADMIN';
-  bool get canBroadcast =>
-      _role == 'COMPANY_ADMIN' ||
-      _role == 'BRANCH_ADMIN' ||
-      _role == 'BRANCH_MANAGER';
+  bool get canBroadcast => hasPermission('notifications', 'send');
+
+  bool hasPermission(String menuKey, [String actionKey = 'view']) {
+    if (_isFullAccess || _role == 'COMPANY_ADMIN' || _role == 'BRANCH_ADMIN') {
+      return true;
+    }
+    final menuPerms = _permissions[menuKey];
+    if (menuPerms is Map) {
+      return menuPerms[actionKey] == true;
+    }
+    return false;
+  }
   /// Always returns the symbol for the country selected via setup_country.dart
   /// A trailing space is included so currency amounts are formatted as "₹ 100" / "AED 50".
   String get currencySymbol => '${CountryConfig.currencySymbol} ';
@@ -72,11 +89,43 @@ class AuthProvider with ChangeNotifier {
     _subscriptionDaysLeft = prefs.getInt('subscription_days_left') ?? 999;
     _subscriptionEndDate = prefs.getString('subscription_end_date');
     _hasInsuranceModule = prefs.getBool('has_insurance_module') ?? false;
+    _isFullAccess = prefs.getBool('auth_is_full_access') ?? true;
+    _designationName = prefs.getString('auth_designation_name') ?? '';
+    final permsJson = prefs.getString('auth_permissions');
+    if (permsJson != null && permsJson.isNotEmpty) {
+      try {
+        _permissions = Map<String, dynamic>.from(jsonDecode(permsJson));
+      } catch (_) {
+        _permissions = {};
+      }
+    }
     final savedIso = prefs.getString('auth_country_iso');
     if (savedIso != null && savedIso.isNotEmpty) {
       await CountryConfig.setCountryByIso(savedIso);
     }
     notifyListeners();
+    if (_token != null) {
+      refreshPermissions();
+    }
+  }
+
+  Future<void> refreshPermissions() async {
+    if (_token == null) return;
+    try {
+      final res = await ApiService.getMyPermissions(_token!);
+      if (res['success'] == true) {
+        _isFullAccess = res['is_full_access'] ?? true;
+        _designationName = res['designation_name']?.toString() ?? '';
+        _permissions = res['permissions'] is Map
+            ? Map<String, dynamic>.from(res['permissions'])
+            : {};
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('auth_is_full_access', _isFullAccess);
+        await prefs.setString('auth_designation_name', _designationName);
+        await prefs.setString('auth_permissions', jsonEncode(_permissions));
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   Future<String?> login(String username, String password) async {
@@ -98,6 +147,11 @@ class AuthProvider with ChangeNotifier {
         _subscriptionDaysLeft = data['subscription_days_left'] ?? 999;
         _subscriptionEndDate = data['subscription_end_date'];
         _hasInsuranceModule = data['has_insurance_module'] == true;
+        _isFullAccess = data['is_full_access'] ?? true;
+        _designationName = data['designation_name']?.toString() ?? '';
+        _permissions = data['permissions'] is Map
+            ? Map<String, dynamic>.from(data['permissions'])
+            : {};
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', _token!);
@@ -107,6 +161,9 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString('auth_display_name', _displayName ?? '');
         await prefs.setString('auth_username', _username ?? '');
         await prefs.setString('auth_company_logo', _companyLogo ?? '');
+        await prefs.setBool('auth_is_full_access', _isFullAccess);
+        await prefs.setString('auth_designation_name', _designationName);
+        await prefs.setString('auth_permissions', jsonEncode(_permissions));
         // Auto-switch country based on company country from backend
         final countryIso = data['country_iso_code'];
         if (countryIso != null && countryIso.toString().trim().isNotEmpty) {
@@ -171,6 +228,9 @@ class AuthProvider with ChangeNotifier {
     _subscriptionDaysLeft = 999;
     _subscriptionEndDate = null;
     _hasInsuranceModule = false;
+    _isFullAccess = true;
+    _designationName = '';
+    _permissions = {};
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     notifyListeners();

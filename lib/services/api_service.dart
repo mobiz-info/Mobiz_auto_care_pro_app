@@ -37,6 +37,20 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getMyPermissions(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/permissions/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'success': false};
+  }
+
   static Future<void> ensureModelToTypeMap(String token) async {
     if (_modelToTypeMap.isNotEmpty) return;
     try {
