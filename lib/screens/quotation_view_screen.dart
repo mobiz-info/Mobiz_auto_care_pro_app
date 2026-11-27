@@ -629,6 +629,71 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
     final qNumber = q['quotation_number'] ?? '';
     final dateStr = _formatDateWithTime((q['created_at'] ?? q['date'] ?? '').toString());
 
+    // Load inspection images (damage marks, inspection photos, reported issue photos)
+    final List<Map<String, dynamic>> rawInspectionPhotos = [];
+    for (final dm in damageMarks) {
+      if (dm is Map) {
+        final u = (dm['photo_url'] ?? dm['photo'] ?? dm['image_url'] ?? dm['url'] ?? '').toString().trim();
+        if (u.isNotEmpty) {
+          final partLbl = (dm['part'] ?? dm['zone'] ?? 'Vehicle Part').toString();
+          final viewLbl = (dm['view'] ?? '').toString();
+          final dmgLbl = (dm['damage_type'] ?? '').toString();
+          final cap = '$partLbl${viewLbl.isNotEmpty ? ' ($viewLbl)' : ''}${dmgLbl.isNotEmpty ? ' - $dmgLbl' : ''}';
+          rawInspectionPhotos.add({'url': u, 'caption': cap});
+        }
+      }
+    }
+    for (final key in ['photos', 'inspection_photos', 'images']) {
+      final list = inspectionDetails[key];
+      if (list is List) {
+        for (final item in list) {
+          if (item is Map) {
+            final u = (item['photo_url'] ?? item['url'] ?? item['image'] ?? '').toString().trim();
+            if (u.isNotEmpty) {
+              rawInspectionPhotos.add({
+                'url': u,
+                'caption': (item['caption'] ?? item['label'] ?? 'Inspection Photo').toString(),
+              });
+            }
+          } else if (item is String && item.trim().isNotEmpty) {
+            rawInspectionPhotos.add({'url': item.trim(), 'caption': 'Inspection Photo'});
+          }
+        }
+      }
+    }
+    for (final raw in rawReportedIssues) {
+      if (raw is Map) {
+        final cap = (raw['issue_text'] ?? raw['service_name'] ?? 'Reported Issue').toString();
+        final recs = raw['photo_records'] ?? raw['photos'];
+        if (recs is List) {
+          for (final ph in recs) {
+            final u = (ph is Map ? (ph['url'] ?? ph['photo_url'] ?? ph['image'] ?? '') : ph).toString().trim();
+            if (u.isNotEmpty) {
+              rawInspectionPhotos.add({'url': u, 'caption': cap});
+            }
+          }
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> loadedInspectionImages = [];
+    for (final ph in rawInspectionPhotos) {
+      try {
+        String urlStr = ph['url'].toString();
+        if (urlStr.startsWith('/')) {
+          final rootUrl = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+          urlStr = '$rootUrl$urlStr';
+        }
+        final resp = await http.get(Uri.parse(urlStr)).timeout(const Duration(seconds: 6));
+        if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+          loadedInspectionImages.add({
+            'image': pw.MemoryImage(resp.bodyBytes),
+            'caption': ph['caption'].toString(),
+          });
+        }
+      } catch (_) {}
+    }
+
     final pdf = pw.Document(
       title: qNumber.isNotEmpty ? qNumber : 'Quotation',
       theme: notoFont != null
@@ -1625,6 +1690,210 @@ class _QuotationViewScreenState extends State<QuotationViewScreen> {
               ),
             ),
           ),
+
+          if (hasInspection || loadedInspectionImages.isNotEmpty) ...[
+            pw.NewPage(),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey50,
+                borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: PdfColors.grey300),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'VEHICLE INSPECTION REPORT',
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.indigo900,
+                        ),
+                      ),
+                      if (inspectionAt.isNotEmpty)
+                        pw.Text(
+                          'Inspection Date: ${_formatDateWithTime(inspectionAt)}',
+                          style: const pw.TextStyle(
+                            fontSize: 8,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 8),
+
+                  if (damageMarks.isNotEmpty) ...[
+                    pw.Table(
+                      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                      columnWidths: {
+                        0: const pw.FlexColumnWidth(2.2),
+                        1: const pw.FlexColumnWidth(1.4),
+                        2: const pw.FlexColumnWidth(1.0),
+                        3: const pw.FlexColumnWidth(2.0),
+                      },
+                      children: [
+                        pw.TableRow(
+                          decoration: const pw.BoxDecoration(color: PdfColors.indigo900),
+                          children: [
+                            headerCell('Vehicle Part / View'),
+                            headerCell('Damage Type'),
+                            headerCell('Severity'),
+                            headerCell('Remarks'),
+                          ],
+                        ),
+                        ...damageMarks.whereType<Map>().map((dm) {
+                          final part = (dm['part'] ?? dm['zone'] ?? 'Part').toString();
+                          final view = (dm['view'] ?? '').toString();
+                          final dmg = (dm['damage_type'] ?? 'Scratch').toString();
+                          final sev = (dm['severity'] ?? 'Minor').toString();
+                          final rem = (dm['remarks'] ?? '-').toString();
+                          return pw.TableRow(
+                            children: [
+                              bodyCell(view.isNotEmpty ? '$part ($view)' : part, isBold: true),
+                              bodyCell(dmg),
+                              bodyCell(sev, isBold: true),
+                              bodyCell(rem.isEmpty ? '-' : rem),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                    pw.SizedBox(height: 8),
+                  ],
+
+                  if (checklistList.isNotEmpty) ...[
+                    pw.Table(
+                      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                      columnWidths: {
+                        0: const pw.FlexColumnWidth(2.5),
+                        1: const pw.FlexColumnWidth(1.0),
+                        2: const pw.FlexColumnWidth(1.2),
+                        3: const pw.FlexColumnWidth(1.8),
+                      },
+                      children: [
+                        pw.TableRow(
+                          decoration: const pw.BoxDecoration(color: PdfColors.indigo50),
+                          children: [
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                              child: pw.Text('Item / Checkpoint', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                              child: pw.Text('Status', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                              child: pw.Text('Value', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                              child: pw.Text('Remarks', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900)),
+                            ),
+                          ],
+                        ),
+                        ...checklistList.map((item) {
+                          final cat = (item['category'] ?? '').toString();
+                          final name = (item['name'] ?? '').toString();
+                          final status = (item['status'] ?? '-').toString().toUpperCase();
+                          final val = (item['value'] ?? '-').toString();
+                          final rem = (item['remarks'] ?? '-').toString();
+                          return pw.TableRow(
+                            children: [
+                              bodyCell(cat.isNotEmpty ? '$cat · $name' : name, isBold: true),
+                              bodyCell(status.isEmpty ? '-' : status),
+                              bodyCell(val.isEmpty ? '-' : val),
+                              bodyCell(rem.isEmpty ? '-' : rem),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                    pw.SizedBox(height: 8),
+                  ],
+
+                  if (hasTyre || hasOil || hasBrake || hasAlignment) ...[
+                    pw.Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if ((tyre['pressure'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Tyre Pressure', tyre['pressure'].toString()),
+                        if ((tyre['tread_depth'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Tread Depth', tyre['tread_depth'].toString()),
+                        if ((oil['oil_type'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Oil Type', oil['oil_type'].toString()),
+                        if ((oil['brand'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Oil Brand', oil['brand'].toString()),
+                        if ((oil['grade'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Oil Grade', oil['grade'].toString()),
+                        if ((brake['front'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Front Brake', brake['front'].toString()),
+                        if ((brake['rear'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Rear Brake', brake['rear'].toString()),
+                        if ((wheelAlignment['remarks'] ?? '').toString().isNotEmpty)
+                          _pdfMetricTag('Alignment', wheelAlignment['remarks'].toString()),
+                      ],
+                    ),
+                    pw.SizedBox(height: 8),
+                  ],
+
+                  if (loadedInspectionImages.isNotEmpty) ...[
+                    pw.Divider(color: PdfColors.grey300),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      'INSPECTION PHOTOS (${loadedInspectionImages.length})',
+                      style: pw.TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.indigo900,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: loadedInspectionImages.map((im) {
+                        return pw.Container(
+                          width: 155,
+                          padding: const pw.EdgeInsets.all(4),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.white,
+                            border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                            borderRadius: pw.BorderRadius.circular(4),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.center,
+                            children: [
+                              pw.Image(
+                                im['image'] as pw.MemoryImage,
+                                width: 147,
+                                height: 105,
+                                fit: pw.BoxFit.cover,
+                              ),
+                              pw.SizedBox(height: 3),
+                              pw.Text(
+                                im['caption'].toString(),
+                                textAlign: pw.TextAlign.center,
+                                style: const pw.TextStyle(
+                                  fontSize: 7,
+                                  color: PdfColors.grey800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

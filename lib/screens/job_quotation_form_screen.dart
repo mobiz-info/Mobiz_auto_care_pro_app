@@ -81,7 +81,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
   final _serviceWarrantyCtrl = TextEditingController();
   final _serviceRemarkCtrl = TextEditingController();
   List<Map<String, dynamic>> _leadServices = [];
-  final _labourNameCtrl = TextEditingController();
+  final _labourNameCtrl = TextEditingController(text: 'Labour Charge');
   final _labourRateCtrl = TextEditingController();
   final _labourQtyCtrl = TextEditingController(text: '1');
   final _labourDiscountCtrl = TextEditingController(text: '0');
@@ -2107,7 +2107,7 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
         'total': total,
         'remarks': _labourRemarksCtrl.text.trim(),
       });
-      _labourNameCtrl.clear();
+      _labourNameCtrl.text = 'Labour Charge';
       _labourRateCtrl.clear();
       _labourQtyCtrl.text = '1';
       _labourDiscountCtrl.text = '0';
@@ -3528,94 +3528,6 @@ class _JobQuotationFormScreenState extends State<JobQuotationFormScreen>
           ),
         ),
         _section('Labour Charge', Icons.handyman_outlined, [
-          ..._reportedIssues.expand((report) {
-            final activities = report['activities'] as List? ?? [];
-            final serviceName = report['service']?['name'] ?? report['issue_text'] ?? 'Service';
-
-            return activities.reversed.map((raw) {
-              final activity = raw as Map<String, dynamic>;
-              final activityKey = activity['id'] ?? '${report['issue_text']}-${activity['name']}';
-              final cost = double.tryParse((activity['cost'] ?? '').toString()) ?? 0.0;
-              final discount = double.tryParse((activity['discount'] ?? '').toString()) ?? 0.0;
-              final net = (cost - discount).clamp(0.0, double.infinity);
-
-              return Container(
-                key: ValueKey('quote-activity-labour-$activityKey'),
-                margin: EdgeInsets.only(bottom: 8.h),
-                padding: REdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  border: Border.all(color: Colors.grey.shade200),
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$serviceName · ${activity['name']}',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13.sp),
-                    ),
-                    SizedBox(height: 8.h),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            key: ValueKey('quote-act-cost-$activityKey'),
-                            initialValue: activity['cost']?.toString() ?? '',
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: GoogleFonts.inter(fontSize: 13.sp),
-                            decoration: InputDecoration(
-                              labelText: 'Cost',
-                              labelStyle: GoogleFonts.inter(fontSize: 11.sp),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                activity['cost'] = value;
-                              });
-                            },
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        Expanded(
-                          child: TextFormField(
-                            key: ValueKey('quote-act-disc-$activityKey'),
-                            initialValue: activity['discount']?.toString() ?? '',
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: GoogleFonts.inter(fontSize: 13.sp),
-                            decoration: InputDecoration(
-                              labelText: 'Discount',
-                              labelStyle: GoogleFonts.inter(fontSize: 11.sp),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                activity['discount'] = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 6.h),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'Total: $currencySymbol ${net.toStringAsFixed(2)}',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.sp),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            });
-          }),
           Padding(
             padding: EdgeInsets.symmetric(vertical: 6.h),
             child: Text(
