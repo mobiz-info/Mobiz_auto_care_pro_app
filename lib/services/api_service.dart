@@ -192,12 +192,14 @@ class ApiService {
   static Future<Map<String, dynamic>> getInvoiceServices(
     dynamic customerId,
     dynamic vehicleId,
-    String token,
-  ) async {
+    String token, {
+    bool isDirectSale = false,
+  }) async {
     final cId = customerId?.toString() ?? '';
     final vId = vehicleId?.toString() ?? '';
+    final directParam = isDirectSale ? '&is_direct_sale=1' : '';
     final response = await http.get(
-      Uri.parse('$baseUrl/invoice/services/?customer_id=$cId&vehicle_id=$vId'),
+      Uri.parse('$baseUrl/invoice/services/?customer_id=$cId&vehicle_id=$vId$directParam'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

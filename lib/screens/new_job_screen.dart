@@ -16,6 +16,7 @@ import 'add_vehicle_screen.dart';
 import 'invoice_create_screen.dart';
 import 'vehicle_service_history_screen.dart';
 import 'quotation_create_screen.dart';
+import '../widgets/quick_sale_sheet.dart';
 
 class NewJobScreen extends StatefulWidget {
   const NewJobScreen({super.key});
@@ -231,6 +232,27 @@ class _NewJobScreenState extends State<NewJobScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('New Job'), style: TextStyle(fontWeight: FontWeight.w600)),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TextButton.icon(
+              onPressed: () => showQuickSaleSheet(context),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFE0F2FE),
+                foregroundColor: const Color(0xFF0284C7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              ),
+              icon: const Icon(Icons.flash_on, size: 16),
+              label: Text(
+                context.tr('Quick Sale'),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12.sp),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: EdgeInsets.all(20.0),

@@ -373,18 +373,20 @@ class _ServiceRow {
 
 class InvoiceCreateScreen extends StatefulWidget {
   final Map<String, dynamic> customer;
-  final Map<String, dynamic> vehicle;
+  final Map<String, dynamic>? vehicle;
   final String? bookingId;
   final Map<String, dynamic>? invoiceToEdit;
   final bool isInsurance;
+  final bool isDirectSale;
 
   const InvoiceCreateScreen({
     super.key,
     required this.customer,
-    required this.vehicle,
+    this.vehicle,
     this.bookingId,
     this.invoiceToEdit,
     this.isInsurance = false,
+    this.isDirectSale = false,
   });
 
   @override
@@ -692,8 +694,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     try {
       final svcRes = await ApiService.getInvoiceServices(
         widget.customer['id']?.toString() ?? '',
-        widget.vehicle['id']?.toString() ?? '',
+        widget.vehicle?['id']?.toString() ?? '',
         token,
+        isDirectSale: widget.isDirectSale,
       );
       final extRes = await ApiService.getExtrasList(token);
 
@@ -709,10 +712,11 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       } catch (_) {}
 
       if (svcRes['success'] == true) {
-        if (svcRes['wheel_type'] != null &&
-            (widget.vehicle['wheel_type'] == null ||
-                widget.vehicle['wheel_type'].toString().isEmpty)) {
-          widget.vehicle['wheel_type'] = svcRes['wheel_type'];
+        if (widget.vehicle != null &&
+            svcRes['wheel_type'] != null &&
+            (widget.vehicle!['wheel_type'] == null ||
+                widget.vehicle!['wheel_type'].toString().isEmpty)) {
+          widget.vehicle!['wheel_type'] = svcRes['wheel_type'];
         }
         _allServices = svcRes['services'] ?? [];
         final rawEnabled =
@@ -1313,9 +1317,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       _rows.removeAt(idx);
     } else {
       final row = _ServiceRow(service: svc);
-      final currentOdo = widget.vehicle['current_odometer_km'] ??
-          widget.vehicle['odometer'] ??
-          widget.vehicle['odometer_km'];
+      final currentOdo = widget.vehicle?['current_odometer_km'] ??
+          widget.vehicle?['odometer'] ??
+          widget.vehicle?['odometer_km'];
       if (currentOdo != null &&
           currentOdo.toString().isNotEmpty &&
           currentOdo.toString() != '0') {
@@ -1365,13 +1369,17 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     final token = context.read<AuthProvider>().token;
     if (token == null) return;
 
+    if (widget.isDirectSale || widget.vehicle == null || widget.customer['id'] == null) {
+      return;
+    }
+
     row.isLoadingSchemes = true;
     _updateUi();
 
     try {
       final res = await ApiService.getAvailableSchemes(
         widget.customer['id']?.toString() ?? '',
-        widget.vehicle['id']?.toString() ?? '',
+        widget.vehicle?['id']?.toString() ?? '',
         row.serviceId,
         token,
       );
@@ -1829,7 +1837,11 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
       final invoiceData = {
         'customer_id': widget.customer['id'],
-        'vehicle_id': widget.vehicle['id'],
+        'customer_name': widget.customer['name'] ?? '',
+        'customer_phone': widget.customer['phone'] ?? '',
+        'customer_trn': widget.customer['tax_number'] ?? '',
+        'vehicle_id': widget.isDirectSale ? null : widget.vehicle?['id'],
+        'is_direct_sale': widget.isDirectSale,
         'date':
             "${_selectedInvoiceDate.year}-${_selectedInvoiceDate.month.toString().padLeft(2, '0')}-${_selectedInvoiceDate.day.toString().padLeft(2, '0')}",
         'invoice_date':
@@ -1902,7 +1914,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                 'branch': response['branch'] ?? '',
               },
               customer: widget.customer,
-              vehicle: widget.vehicle,
+              vehicle: widget.vehicle ?? const {},
             ),
           ),
         );
@@ -1962,7 +1974,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    "${context.tr('Vehicle')}: ${widget.vehicle['no'] ?? widget.vehicle['number'] ?? ''}",
+                    "${context.tr('Vehicle')}: ${widget.vehicle?['no'] ?? widget.vehicle?['number'] ?? ''}",
                     style: GoogleFonts.inter(
                       fontSize: 13.sp,
                       color: Colors.grey.shade700,
@@ -2005,7 +2017,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                     child: ElevatedButton(
                       onPressed: () async {
                         Navigator.pop(ctx);
-                        widget.vehicle['wheel_type'] = selectedType;
+                        if (widget.vehicle == null) return;
+                        widget.vehicle!['wheel_type'] = selectedType;
                         final token = context.read<AuthProvider>().token;
                         if (token != null) {
                           try {
@@ -2017,10 +2030,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                                   widget.customer['customer_type_id'] ?? '',
                               'updated_vehicles': [
                                 {
-                                  'id': widget.vehicle['id'],
+                                  'id': widget.vehicle!['id'],
                                   'vehicle_number':
-                                      widget.vehicle['no'] ??
-                                      widget.vehicle['number'] ??
+                                      widget.vehicle!['no'] ??
+                                      widget.vehicle!['number'] ??
                                       '',
                                   'wheel_type': selectedType,
                                 },
@@ -2203,21 +2216,53 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       ),
                     ),
                   ),
+                if ((widget.customer['tax_number'] ?? '').toString().trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 2),
+                    child: Text(
+                      "TRN: ${widget.customer['tax_number']}",
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: const Color(0xFF0284C7),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 Builder(
                   builder: (context) {
+                    if (widget.isDirectSale || widget.vehicle == null) {
+                      return Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE0F2FE),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFBAE6FD)),
+                        ),
+                        child: Text(
+                          "⚡ ${context.tr('Quick Sale (No Vehicle)')}",
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF0369A1),
+                          ),
+                        ),
+                      );
+                    }
+                    final v = widget.vehicle!;
                     final emission =
-                        (widget.vehicle['emission_standard'] ??
-                                widget.vehicle['emission_standard_name'] ??
+                        (v['emission_standard'] ??
+                                v['emission_standard_name'] ??
                                 '')
                             .toString()
                             .trim();
                     final vehicleInfo =
-                        (widget.vehicle['vehicle_type'] != null &&
-                            widget.vehicle['vehicle_type']
+                        (v['vehicle_type'] != null &&
+                            v['vehicle_type']
                                 .toString()
                                 .isNotEmpty)
-                        ? "${widget.vehicle['no'] ?? widget.vehicle['number'] ?? ''} · ${widget.vehicle['vehicle_type']} - ${widget.vehicle['type']}"
-                        : "${widget.vehicle['no'] ?? widget.vehicle['number'] ?? ''} · ${widget.vehicle['type']}";
+                        ? "${v['no'] ?? v['number'] ?? ''} · ${v['vehicle_type']} - ${v['type']}"
+                        : "${v['no'] ?? v['number'] ?? ''} · ${v['type']}";
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2365,7 +2410,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
 
   // ── Service multi-select card ─────────────────────────────────────────────
   Widget _serviceSelectionCard() {
-    final vehicleWheelType = (widget.vehicle['wheel_type'] ?? '')
+    final vehicleWheelType = (widget.vehicle?['wheel_type'] ?? '')
         .toString()
         .toLowerCase()
         .trim();
@@ -3745,8 +3790,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         row.serviceCategory == 'pollution_test' ||
         row.serviceName.toLowerCase().contains('smoke') ||
         row.serviceName.toLowerCase().contains('pollution')) {
-      final modelName = (widget.vehicle['type'] ?? '').toString().toUpperCase();
-      final emission = (widget.vehicle['emission_standard'] ?? '')
+      final modelName = (widget.vehicle?['type'] ?? '').toString().toUpperCase();
+      final emission = (widget.vehicle?['emission_standard'] ?? '')
           .toString()
           .toUpperCase();
       final combined = '$modelName $emission';

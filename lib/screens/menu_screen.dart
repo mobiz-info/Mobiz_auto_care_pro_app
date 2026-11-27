@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../widgets/quick_sale_sheet.dart';
 import 'bills_screen.dart';
 import 'bluetooth_printer_screen.dart';
 import 'book_now_screen.dart';
@@ -71,6 +72,11 @@ class _MenuScreenState extends State<MenuScreen> {
       'title': 'New Job',
       'icon': Icons.add_circle_outline,
       'color': Color(0xFF3B82F6),
+    },
+    {
+      'title': 'Quick Sale',
+      'icon': Icons.flash_on_outlined,
+      'color': Color(0xFF0284C7),
     },
     {
       'title': 'Job Card',
@@ -203,6 +209,11 @@ class _MenuScreenState extends State<MenuScreen> {
       'title': 'New Job',
       'icon': Icons.add_circle_outline,
       'color': Color(0xFF3B82F6),
+    },
+    {
+      'title': 'Quick Sale',
+      'icon': Icons.flash_on_outlined,
+      'color': Color(0xFF0284C7),
     },
     {
       'title': 'Job Card',
@@ -346,6 +357,10 @@ class _MenuScreenState extends State<MenuScreen> {
 
 
   void _navigate(BuildContext context, String title) {
+    if (title == 'Quick Sale') {
+      showQuickSaleSheet(context);
+      return;
+    }
     final routes = <String, Widget>{
       'New Job': NewJobScreen(),
       'Job Card': const JobCardWorkflowScreen(),
