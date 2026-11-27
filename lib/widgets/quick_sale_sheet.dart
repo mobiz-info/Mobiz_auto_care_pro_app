@@ -19,6 +19,7 @@ Future<void> showQuickSaleSheet(
   final trnCtrl = TextEditingController();
   String selectedDialCode = CountryConfig.phoneDialCode;
   bool isSearching = false;
+  String? nameError;
 
   await showModalBottomSheet(
     context: context,
@@ -90,9 +91,15 @@ Future<void> showQuickSaleSheet(
                   controller: nameCtrl,
                   textCapitalization: TextCapitalization.words,
                   style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                  onChanged: (_) {
+                    if (nameError != null) {
+                      setModalState(() => nameError = null);
+                    }
+                  },
                   decoration: InputDecoration(
-                    labelText: context.tr('Customer Name'),
-                    hintText: context.tr('e.g. Walk-in Customer'),
+                    labelText: '${context.tr('Customer Name')} *',
+                    hintText: context.tr('Enter Customer Name'),
+                    errorText: nameError,
                     prefixIcon: const Icon(Icons.person_outline, color: navyBlue),
                     filled: true,
                     fillColor: Colors.white,
@@ -186,9 +193,15 @@ Future<void> showQuickSaleSheet(
                     onPressed: isSearching
                         ? null
                         : () async {
-                            final name = nameCtrl.text.trim().isNotEmpty
-                                ? nameCtrl.text.trim()
-                                : 'Walk-in Customer';
+                            final name = nameCtrl.text.trim();
+                            if (name.isEmpty) {
+                              setModalState(() {
+                                nameError = context.tr(
+                                  'Customer name is required',
+                                );
+                              });
+                              return;
+                            }
                             final rawPhone = phoneCtrl.text.trim();
                             final trn = trnCtrl.text.trim();
 
