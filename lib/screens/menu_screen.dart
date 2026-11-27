@@ -76,7 +76,7 @@ class _MenuScreenState extends State<MenuScreen> {
     {
       'title': 'Quick Sale',
       'icon': Icons.flash_on_outlined,
-      'color': Color(0xFF0284C7),
+      'color': Color(0xFF000080),
     },
     {
       'title': 'Job Card',
@@ -213,7 +213,7 @@ class _MenuScreenState extends State<MenuScreen> {
     {
       'title': 'Quick Sale',
       'icon': Icons.flash_on_outlined,
-      'color': Color(0xFF0284C7),
+      'color': Color(0xFF000080),
     },
     {
       'title': 'Job Card',

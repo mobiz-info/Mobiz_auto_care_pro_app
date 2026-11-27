@@ -238,8 +238,8 @@ class _NewJobScreenState extends State<NewJobScreen> {
             child: TextButton.icon(
               onPressed: () => showQuickSaleSheet(context),
               style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFFE0F2FE),
-                foregroundColor: const Color(0xFF0284C7),
+                backgroundColor: const Color(0xFF000080),
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),

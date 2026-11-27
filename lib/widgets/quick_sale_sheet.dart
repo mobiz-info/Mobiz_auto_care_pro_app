@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 import '../config/country_config.dart';
 import '../providers/auth_provider.dart';
@@ -12,9 +13,11 @@ Future<void> showQuickSaleSheet(
   BuildContext context, {
   String initialPhone = '',
 }) async {
+  const navyBlue = Color(0xFF000080);
   final nameCtrl = TextEditingController();
   final phoneCtrl = TextEditingController(text: initialPhone);
   final trnCtrl = TextEditingController();
+  String selectedDialCode = CountryConfig.phoneDialCode;
   bool isSearching = false;
 
   await showModalBottomSheet(
@@ -41,17 +44,17 @@ Future<void> showQuickSaleSheet(
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2FE),
-                        borderRadius: BorderRadius.circular(10),
+                        color: navyBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
                         Icons.flash_on,
-                        color: Color(0xFF0284C7),
+                        color: navyBlue,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +64,7 @@ Future<void> showQuickSaleSheet(
                             style: GoogleFonts.inter(
                               fontSize: 17.sp,
                               fontWeight: FontWeight.bold,
-                              color: const Color(0xFF0F172A),
+                              color: navyBlue,
                             ),
                           ),
                           Text(
@@ -70,58 +73,107 @@ Future<void> showQuickSaleSheet(
                             ),
                             style: GoogleFonts.inter(
                               fontSize: 11.5.sp,
-                              color: const Color(0xFF64748B),
+                              color: Colors.grey.shade600,
                             ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: Icon(Icons.close, color: Colors.grey.shade600),
                       onPressed: () => Navigator.pop(modalCtx),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 TextField(
                   controller: nameCtrl,
                   textCapitalization: TextCapitalization.words,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w500),
                   decoration: InputDecoration(
                     labelText: context.tr('Customer Name'),
                     hintText: context.tr('e.g. Walk-in Customer'),
-                    prefixIcon: const Icon(Icons.person_outline),
+                    prefixIcon: const Icon(Icons.person_outline, color: navyBlue),
+                    filled: true,
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: navyBlue, width: 1.5),
                     ),
                     isDense: true,
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                IntlPhoneField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
+                  initialCountryCode: CountryConfig.phoneIsoCode,
+                  dropdownTextStyle: GoogleFonts.inter(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14.sp,
+                  ),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                  disableLengthCheck: true,
+                  onCountryChanged: (country) {
+                    selectedDialCode = '+${country.dialCode}';
+                  },
                   decoration: InputDecoration(
                     labelText:
                         '${context.tr('Phone Number')} (${context.tr('Optional')})',
-                    hintText: context.tr('Enter mobile number'),
-                    prefixIcon: const Icon(Icons.phone_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                    hintText: context.tr('Enter Mobile Number'),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 12,
                     ),
-                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: navyBlue, width: 1.5),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: trnCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w500),
                   decoration: InputDecoration(
                     labelText:
                         '${context.tr('TRN Number')} (${context.tr('Optional')})',
                     hintText: context.tr('e.g. 100234567800003'),
-                    prefixIcon: const Icon(Icons.receipt_long_outlined),
+                    prefixIcon:
+                        const Icon(Icons.receipt_long_outlined, color: navyBlue),
+                    filled: true,
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: navyBlue, width: 1.5),
                     ),
                     isDense: true,
                   ),
@@ -140,24 +192,28 @@ Future<void> showQuickSaleSheet(
                             final rawPhone = phoneCtrl.text.trim();
                             final trn = trnCtrl.text.trim();
 
+                            String formattedPhone = '';
+                            if (rawPhone.isNotEmpty) {
+                              formattedPhone =
+                                  CountryConfig.formatPhoneWithCountryCode(
+                                    rawPhone,
+                                    selectedDialCode,
+                                  );
+                            }
+
                             Map<String, dynamic> customerData = {
                               'id': null,
                               'name': name,
-                              'phone': rawPhone,
+                              'phone': formattedPhone,
                               'tax_number': trn,
                             };
 
-                            if (rawPhone.isNotEmpty) {
+                            if (formattedPhone.isNotEmpty) {
                               setModalState(() => isSearching = true);
                               try {
                                 final token =
                                     context.read<AuthProvider>().token;
                                 if (token != null) {
-                                  final formattedPhone =
-                                      CountryConfig.formatPhoneWithCountryCode(
-                                        rawPhone,
-                                        CountryConfig.phoneDialCode,
-                                      );
                                   final res = await ApiService.searchCustomer(
                                     formattedPhone,
                                     token,
@@ -196,8 +252,9 @@ Future<void> showQuickSaleSheet(
                             }
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0284C7),
+                      backgroundColor: navyBlue,
                       foregroundColor: Colors.white,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
